@@ -82,6 +82,25 @@ test("31 个等级分别绘制对应的独立图片", async ({ page }) => {
   }
 });
 
+test("六个状态标签与对应的大刻度对准", async ({ page }) => {
+  const alignments = await page.locator(".stage-marker").evaluateAll((markers) =>
+    markers.map((marker, index) => {
+      const markerRect = marker.getBoundingClientRect();
+      const tickRect = document
+        .querySelector<HTMLElement>(`.tick[data-level="${index * 6}"]`)!
+        .getBoundingClientRect();
+
+      return Math.abs(
+        markerRect.left + markerRect.width / 2 - (tickRect.left + tickRect.width / 2),
+      );
+    }),
+  );
+
+  for (const offset of alignments) {
+    expect(offset).toBeLessThanOrEqual(1);
+  }
+});
+
 test("页面在当前视口没有横向溢出", async ({ page }, testInfo) => {
   await setSliderLevel(page, 30);
 

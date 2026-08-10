@@ -346,6 +346,7 @@ h1 {
 }
 
 .control-panel {
+  --rail-inset: 13px;
   position: relative;
   z-index: 10;
   width: min(760px, 100%);
@@ -360,11 +361,11 @@ h1 {
 .tick-track {
   position: absolute;
   top: 12px;
-  right: 12px;
-  left: 12px;
-  display: grid;
-  grid-template-columns: repeat(31, 1fr);
+  right: var(--rail-inset);
+  left: var(--rail-inset);
+  display: flex;
   align-items: center;
+  justify-content: space-between;
   height: 24px;
   pointer-events: none;
 }
@@ -448,27 +449,22 @@ h1 {
 }
 
 .stage-markers {
-  display: grid;
-  grid-template-columns: repeat(6, 1fr);
+  display: flex;
+  justify-content: space-between;
   margin: -2px 0 0;
-  padding: 0;
+  padding: 0 var(--rail-inset);
   list-style: none;
 }
 
 .stage-marker {
+  width: 0;
   color: var(--muted);
   font-size: 11px;
   letter-spacing: 0.06em;
   text-align: center;
+  white-space: nowrap;
+  transform: translateX(-50%);
   transition: color 140ms ease, transform 140ms ease;
-}
-
-.stage-marker:first-child {
-  text-align: left;
-}
-
-.stage-marker:last-child {
-  text-align: right;
 }
 
 .stage-marker.is-passed {
@@ -478,7 +474,7 @@ h1 {
 .stage-marker.is-current {
   color: currentColor;
   font-weight: 700;
-  transform: translateY(-2px);
+  transform: translate(-50%, -2px);
 }
 
 .drag-hint {
