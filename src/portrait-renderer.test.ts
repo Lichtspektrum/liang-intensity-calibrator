@@ -1,35 +1,23 @@
 import { describe, expect, it } from "vitest";
 
-import { getRenderFrame, PORTRAIT_PATHS } from "./portrait-renderer";
+import { getFrameIndex, PORTRAIT_PATHS } from "./portrait-renderer";
 
 describe("portrait renderer state", () => {
-  it("为六个主形态提供固定图片路径", () => {
-    expect(PORTRAIT_PATHS).toHaveLength(6);
-    expect(PORTRAIT_PATHS[0]).toContain("00-laoliang");
-    expect(PORTRAIT_PATHS[5]).toContain("05-liangzu");
+  it("为 31 个颗粒状态提供独立图片路径", () => {
+    expect(PORTRAIT_PATHS).toHaveLength(31);
+    expect(PORTRAIT_PATHS[0]).toBe("/frames/frame-00.png");
+    expect(PORTRAIT_PATHS[9]).toBe("/frames/frame-09.png");
+    expect(PORTRAIT_PATHS[30]).toBe("/frames/frame-30.png");
   });
 
-  it("从牢梁图片开始绘制", () => {
-    expect(getRenderFrame(0)).toEqual({
-      fromIndex: 0,
-      toIndex: 1,
-      mix: 0,
-    });
+  it("每一级直接映射到同编号图片", () => {
+    expect(getFrameIndex(0)).toBe(0);
+    expect(getFrameIndex(9)).toBe(9);
+    expect(getFrameIndex(30)).toBe(30);
   });
 
-  it("在 9 级绘制小梁和梁子的等量混合", () => {
-    expect(getRenderFrame(9)).toEqual({
-      fromIndex: 1,
-      toIndex: 2,
-      mix: 0.5,
-    });
-  });
-
-  it("在 30 级只绘制梁祖", () => {
-    expect(getRenderFrame(30)).toEqual({
-      fromIndex: 5,
-      toIndex: 5,
-      mix: 0,
-    });
+  it("越界等级会收束到首尾帧", () => {
+    expect(getFrameIndex(-10)).toBe(0);
+    expect(getFrameIndex(99)).toBe(30);
   });
 });

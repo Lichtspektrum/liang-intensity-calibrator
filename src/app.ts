@@ -53,7 +53,7 @@ export function mountApp(
           <span class="frame-corner frame-corner--tr" aria-hidden="true"></span>
           <span class="frame-corner frame-corner--bl" aria-hidden="true"></span>
           <span class="frame-corner frame-corner--br" aria-hidden="true"></span>
-          <div class="load-state" role="status">载入祖力 0 / 6</div>
+          <div class="load-state" role="status">载入祖力 0 / 31</div>
         </div>
 
         <div class="stage-readout">

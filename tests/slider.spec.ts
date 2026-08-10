@@ -73,6 +73,15 @@ test("Canvas 已完成实际绘制", async ({ page }) => {
   expect(dimensions.height).toBeGreaterThan(300);
 });
 
+test("31 个等级分别绘制对应的独立图片", async ({ page }) => {
+  const canvas = page.locator(".portrait-canvas");
+
+  for (let level = 0; level <= 30; level += 1) {
+    await setSliderLevel(page, level);
+    await expect(canvas).toHaveAttribute("data-frame", String(level).padStart(2, "0"));
+  }
+});
+
 test("页面在当前视口没有横向溢出", async ({ page }, testInfo) => {
   await setSliderLevel(page, 30);
 
