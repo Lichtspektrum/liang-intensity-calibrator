@@ -1,0 +1,9 @@
+{
+  "name": "liang-slider",
+  "compatibility_date": "2026-08-08",
+  "main": "./src/worker.ts",
+  "assets": {
+    "binding": "ASSETS",
+    "not_found_handling": "single-page-application"
+  }
+}
