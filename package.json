@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc --noEmit && vite build && node scripts/prepare-sites-build.mjs",
+    "build:pages": "tsc --noEmit && vite build --config vite.pages.config.ts --mode github-pages",
     "preview": "vite preview",
     "test": "vitest",
     "test:e2e": "playwright test"

@@ -1,8 +1,13 @@
 import { getProgression } from "./progression";
 
+export function getPortraitPath(baseUrl: string, level: number): string {
+  const base = baseUrl.endsWith("/") ? baseUrl : `${baseUrl}/`;
+  return `${base}frames/frame-${String(level).padStart(2, "0")}.png`;
+}
+
 export const PORTRAIT_PATHS = Array.from(
   { length: 31 },
-  (_, level) => `/frames/frame-${String(level).padStart(2, "0")}.png`,
+  (_, level) => getPortraitPath(import.meta.env.BASE_URL, level),
 );
 
 export function getFrameIndex(level: number): number {
