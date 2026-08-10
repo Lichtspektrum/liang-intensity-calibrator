@@ -3,10 +3,10 @@ import { describe, expect, it } from "vitest";
 import { getProgression } from "./progression";
 
 describe("getProgression", () => {
-  it("把 0 级映射到牢梁与第一段起点", () => {
+  it("把 0 级映射到小难梁与第一段起点", () => {
     expect(getProgression(0)).toMatchObject({
       level: 0,
-      stage: "牢梁",
+      stage: "小难梁",
       fromIndex: 0,
       toIndex: 1,
       localProgress: 0,
@@ -15,12 +15,12 @@ describe("getProgression", () => {
 
   it("让每个命名节点之间保留五个中间等级", () => {
     expect(getProgression(5)).toMatchObject({
-      stage: "牢梁",
+      stage: "小难梁",
       fromIndex: 0,
       toIndex: 1,
     });
     expect(getProgression(6)).toMatchObject({
-      stage: "小梁",
+      stage: "牢梁",
       fromIndex: 1,
       toIndex: 2,
       localProgress: 0,

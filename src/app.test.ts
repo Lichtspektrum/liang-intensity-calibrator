@@ -22,10 +22,10 @@ describe("liang slider app", () => {
     expect(root.querySelectorAll(".tick")).toHaveLength(31);
   });
 
-  it("初始状态显示牢梁", () => {
+  it("初始状态显示小难梁", () => {
     mountApp(root);
 
-    expect(root.querySelector(".stage-name")?.textContent).toBe("牢梁");
+    expect(root.querySelector(".stage-name")?.textContent).toBe("小难梁");
     expect(root.querySelector(".level-output")?.textContent).toBe("00 / 30");
     expect(root.querySelector(".load-state")?.textContent).toBe("载入祖力 0 / 31");
   });
@@ -48,6 +48,6 @@ describe("liang slider app", () => {
       node.textContent?.trim(),
     );
 
-    expect(labels).toEqual(["牢梁", "小梁", "梁子", "梁圣", "梁神", "梁祖"]);
+    expect(labels).toEqual(["小难梁", "牢梁", "梁子", "梁圣", "梁神", "梁祖"]);
   });
 });

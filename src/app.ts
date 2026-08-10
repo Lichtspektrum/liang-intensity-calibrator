@@ -44,10 +44,10 @@ export function mountApp(
       </header>
 
       <section class="portrait-zone" aria-labelledby="current-stage-label">
-        <p class="stage-ghost" aria-hidden="true">牢梁</p>
+        <p class="stage-ghost" aria-hidden="true">小难梁</p>
         <div class="portrait-shell">
           <div class="imperial-halo" aria-hidden="true"></div>
-          <canvas class="portrait-canvas" role="img" aria-label="当前形态：牢梁"></canvas>
+          <canvas class="portrait-canvas" role="img" aria-label="当前形态：小难梁"></canvas>
           <div class="scan-grid" aria-hidden="true"></div>
           <span class="frame-corner frame-corner--tl" aria-hidden="true"></span>
           <span class="frame-corner frame-corner--tr" aria-hidden="true"></span>
@@ -58,7 +58,7 @@ export function mountApp(
 
         <div class="stage-readout">
           <span id="current-stage-label">当前状态</span>
-          <p class="stage-name" aria-live="polite">牢梁</p>
+          <p class="stage-name" aria-live="polite">小难梁</p>
           <span class="stage-index">阶段 01 / 06</span>
         </div>
       </section>
@@ -75,7 +75,7 @@ export function mountApp(
             step="1"
             value="0"
             aria-label="梁系强度"
-            aria-valuetext="牢梁，0 级，共 30 级"
+            aria-valuetext="小难梁，0 级，共 30 级"
             disabled
           />
         </div>

@@ -1,8 +1,8 @@
 import { expect, test } from "@playwright/test";
 
 const milestones = [
-  [0, "牢梁"],
-  [6, "小梁"],
+  [0, "小难梁"],
+  [6, "牢梁"],
   [12, "梁子"],
   [18, "梁圣"],
   [24, "梁神"],
@@ -30,8 +30,8 @@ test("页面包含完整的 31 级控制与六个命名节点", async ({ page })
   await expect(slider).toHaveAttribute("step", "1");
   await expect(page.locator(".tick")).toHaveCount(31);
   await expect(page.locator(".stage-marker")).toHaveText([
+    "小难梁",
     "牢梁",
-    "小梁",
     "梁子",
     "梁圣",
     "梁神",

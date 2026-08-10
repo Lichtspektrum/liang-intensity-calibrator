@@ -1,4 +1,4 @@
-export const STAGES = ["牢梁", "小梁", "梁子", "梁圣", "梁神", "梁祖"] as const;
+export const STAGES = ["小难梁", "牢梁", "梁子", "梁圣", "梁神", "梁祖"] as const;
 
 export const MAX_LEVEL = 30;
 export const LEVELS_PER_STAGE = 6;
