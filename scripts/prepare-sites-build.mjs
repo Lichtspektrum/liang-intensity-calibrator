@@ -16,7 +16,12 @@ await writeFile(
   resolve(serverDir, "index.js"),
   `export default {
   async fetch(request, env) {
-    return env.ASSETS.fetch(request);
+    const response = await env.ASSETS.fetch(request);
+    if (response.status !== 404 || new URL(request.url).pathname !== "/") {
+      return response;
+    }
+
+    return env.ASSETS.fetch(new Request(new URL("/index.html", request.url), request));
   },
 };
 `,
