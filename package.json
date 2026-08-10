@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc --noEmit && vite build",
+    "build": "tsc --noEmit && vite build && node scripts/prepare-sites-build.mjs",
     "preview": "vite preview",
     "test": "vitest",
     "test:e2e": "playwright test"
