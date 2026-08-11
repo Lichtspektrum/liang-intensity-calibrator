@@ -41,7 +41,7 @@ describe("liang slider app", () => {
 
     expect(root.querySelector(".stage-name")?.textContent).toBe("小难梁");
     expect(root.querySelector(".level-output")?.textContent).toBe("00 / 30");
-    expect(root.querySelector(".load-state")?.textContent).toBe("载入祖力 0 / 31");
+    expect(root.querySelector(".load-state")?.textContent).toBe("载入连续祖力…");
   });
 
   it("拖到 24 级后同步更新梁神文字和无障碍读数", () => {

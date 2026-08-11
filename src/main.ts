@@ -1,7 +1,10 @@
 import "./styles.css";
 
 import { type AppController, mountApp } from "./app";
-import { drawPortrait, preloadPortraits } from "./portrait-renderer";
+import {
+  createEvolutionVideoRenderer,
+  type EvolutionVideoRenderer,
+} from "./video-renderer";
 
 const app = document.querySelector<HTMLElement>("#app");
 
@@ -10,27 +13,19 @@ if (!app) {
 }
 
 let controller: AppController | null = null;
-let portraits: HTMLImageElement[] | null = null;
-let pendingFrame = 0;
+let renderer: EvolutionVideoRenderer | null = null;
 
 const requestDraw = (level: number): void => {
-  if (!controller || !portraits) {
-    return;
-  }
-
-  cancelAnimationFrame(pendingFrame);
-  pendingFrame = requestAnimationFrame(() => {
-    drawPortrait(controller!.canvas, portraits!, level);
-  });
+  renderer?.render(level);
 };
 
 controller = mountApp(app, requestDraw);
+renderer = createEvolutionVideoRenderer(controller.canvas);
+controller.setLoading(0, 1);
 
-preloadPortraits((loaded, total) => {
-  controller?.setLoading(loaded, total);
-})
-  .then((loadedPortraits) => {
-    portraits = loadedPortraits;
+renderer
+  .load()
+  .then(() => {
     controller?.setReady();
     requestDraw(controller?.level ?? 0);
   })
@@ -39,5 +34,5 @@ preloadPortraits((loaded, total) => {
   });
 
 window.addEventListener("resize", () => {
-  requestDraw(controller?.level ?? 0);
+  renderer?.redraw();
 });

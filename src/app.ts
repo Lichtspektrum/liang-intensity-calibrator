@@ -53,7 +53,7 @@ export function mountApp(
           <span class="frame-corner frame-corner--tr" aria-hidden="true"></span>
           <span class="frame-corner frame-corner--bl" aria-hidden="true"></span>
           <span class="frame-corner frame-corner--br" aria-hidden="true"></span>
-          <div class="load-state" role="status">载入祖力 0 / 31</div>
+          <div class="load-state" role="status">载入连续祖力…</div>
         </div>
 
         <div class="stage-readout">
@@ -145,7 +145,7 @@ export function mountApp(
     },
     setLevel,
     setLoading(loaded, total) {
-      loadState.textContent = `载入祖力 ${loaded} / ${total}`;
+      loadState.textContent = loaded >= total ? "连续祖力已就绪" : "载入连续祖力…";
     },
     setReady() {
       slider.disabled = false;
