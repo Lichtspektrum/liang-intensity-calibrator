@@ -27,7 +27,7 @@ test("页面包含完整的 31 级控制与六个命名节点", async ({ page })
 
   await expect(slider).toHaveAttribute("min", "0");
   await expect(slider).toHaveAttribute("max", "30");
-  await expect(slider).toHaveAttribute("step", "1");
+  await expect(slider).toHaveAttribute("step", "0.01");
   await expect(page.locator(".tick")).toHaveCount(31);
   await expect(page.locator(".stage-marker")).toHaveText([
     "小难梁",
@@ -73,13 +73,36 @@ test("Canvas 已完成实际绘制", async ({ page }) => {
   expect(dimensions.height).toBeGreaterThan(300);
 });
 
-test("31 个等级分别绘制对应的独立图片", async ({ page }) => {
+test("31 个语义等级映射到 241 帧连续视频", async ({ page }) => {
   const canvas = page.locator(".portrait-canvas");
 
   for (let level = 0; level <= 30; level += 1) {
     await setSliderLevel(page, level);
-    await expect(canvas).toHaveAttribute("data-frame", String(level).padStart(2, "0"));
+    await expect(canvas).toHaveAttribute(
+      "data-frame",
+      String(level * 8).padStart(3, "0"),
+    );
   }
+});
+
+test("连续滑动位置会定位到对应视频画面", async ({ page }) => {
+  const video = page.locator(".evolution-video");
+  await expect(video).toHaveCount(1);
+  await expect
+    .poll(() =>
+      video.evaluate((element) => (element as HTMLVideoElement).readyState),
+    )
+    .toBeGreaterThanOrEqual(2);
+
+  await setSliderLevel(page, 12.35);
+  await expect(page.locator("#strength-slider")).toHaveValue("12.35");
+  await expect(page.locator(".portrait-canvas")).toHaveAttribute("data-frame", "099");
+
+  const timing = await video.evaluate((element) => {
+    const media = element as HTMLVideoElement;
+    return { currentTime: media.currentTime, duration: media.duration };
+  });
+  expect(timing.currentTime).toBeCloseTo((12.35 / 30) * timing.duration, 1);
 });
 
 test("六个状态标签与对应的大刻度对准", async ({ page }) => {

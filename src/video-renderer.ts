@@ -36,9 +36,12 @@ export function createEvolutionVideoRenderer(
   canvas: HTMLCanvasElement,
 ): EvolutionVideoRenderer {
   const video = document.createElement("video");
+  video.className = "evolution-video";
   video.preload = "auto";
   video.muted = true;
   video.playsInline = true;
+  video.tabIndex = -1;
+  video.setAttribute("aria-hidden", "true");
 
   const webmSource = document.createElement("source");
   webmSource.src = videoAssetPath("liang-evolution.webm");
@@ -49,6 +52,7 @@ export function createEvolutionVideoRenderer(
   mp4Source.type = 'video/mp4; codecs="avc1.64001f"';
 
   video.append(webmSource, mp4Source);
+  canvas.after(video);
 
   let requestedTime = 0;
   let seekFrame = 0;
