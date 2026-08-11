@@ -5,3 +5,5 @@ dist-pages/
 test-results/
 playwright-report/
 .wrangler/
+output/video-prototype/*
+!output/video-prototype/.gitkeep
