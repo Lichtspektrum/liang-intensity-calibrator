@@ -15,8 +15,12 @@ export interface ProgressionState {
   strength: number;
 }
 
+export function clampPosition(rawPosition: number): number {
+  return Math.min(MAX_LEVEL, Math.max(0, rawPosition));
+}
+
 export function getProgression(rawLevel: number): ProgressionState {
-  const level = Math.min(MAX_LEVEL, Math.max(0, Math.round(rawLevel)));
+  const level = Math.round(clampPosition(rawLevel));
   const stageIndex = Math.floor(level / LEVELS_PER_STAGE);
   const isFinalStage = stageIndex === STAGES.length - 1;
   const localProgress = isFinalStage

@@ -18,8 +18,22 @@ describe("liang slider app", () => {
     const slider = root.querySelector<HTMLInputElement>("#strength-slider")!;
     expect(slider.min).toBe("0");
     expect(slider.max).toBe("30");
-    expect(slider.step).toBe("1");
+    expect(slider.step).toBe("0.01");
     expect(root.querySelectorAll(".tick")).toHaveLength(31);
+  });
+
+  it("保留连续滑动位置并用最近等级更新文字", () => {
+    const positions: number[] = [];
+    const controller = mountApp(root, (position) => positions.push(position));
+
+    controller.setLevel(12.35);
+
+    const slider = root.querySelector<HTMLInputElement>("#strength-slider")!;
+    expect(slider.value).toBe("12.35");
+    expect(controller.level).toBe(12.35);
+    expect(positions.at(-1)).toBe(12.35);
+    expect(root.querySelector(".stage-name")?.textContent).toBe("梁子");
+    expect(root.querySelector(".level-output")?.textContent).toBe("12 / 30");
   });
 
   it("初始状态显示小难梁", () => {

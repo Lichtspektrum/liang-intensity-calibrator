@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { getProgression } from "./progression";
+import { clampPosition, getProgression } from "./progression";
 
 describe("getProgression", () => {
   it("把 0 级映射到小难梁与第一段起点", () => {
@@ -40,5 +40,11 @@ describe("getProgression", () => {
   it("限制超出范围的输入", () => {
     expect(getProgression(-3).level).toBe(0);
     expect(getProgression(40).level).toBe(30);
+  });
+
+  it("保留范围内的连续位置", () => {
+    expect(clampPosition(12.35)).toBe(12.35);
+    expect(clampPosition(-0.5)).toBe(0);
+    expect(clampPosition(30.5)).toBe(30);
   });
 });

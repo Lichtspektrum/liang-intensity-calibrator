@@ -1,4 +1,4 @@
-import { getProgression, MAX_LEVEL, STAGES } from "./progression";
+import { clampPosition, getProgression, MAX_LEVEL, STAGES } from "./progression";
 
 export interface AppController {
   readonly canvas: HTMLCanvasElement;
@@ -72,7 +72,7 @@ export function mountApp(
             type="range"
             min="0"
             max="30"
-            step="1"
+            step="0.01"
             value="0"
             aria-label="梁系强度"
             aria-valuetext="小难梁，0 级，共 30 级"
@@ -100,12 +100,13 @@ export function mountApp(
   const loadState = root.querySelector<HTMLElement>(".load-state")!;
   const ticks = Array.from(root.querySelectorAll<HTMLElement>(".tick"));
   const markers = Array.from(root.querySelectorAll<HTMLElement>(".stage-marker"));
-  let currentLevel = 0;
+  let currentPosition = 0;
 
   const setLevel = (rawLevel: number): void => {
-    const state = getProgression(rawLevel);
-    currentLevel = state.level;
-    slider.value = String(state.level);
+    const position = clampPosition(rawLevel);
+    const state = getProgression(position);
+    currentPosition = position;
+    slider.value = String(position);
     slider.setAttribute(
       "aria-valuetext",
       `${state.stage}，${state.level} 级，共 ${MAX_LEVEL} 级`,
@@ -116,7 +117,7 @@ export function mountApp(
     stageIndex.textContent = `阶段 ${String(state.stageIndex + 1).padStart(2, "0")} / 06`;
     canvas.setAttribute("aria-label", `当前形态：${state.stage}`);
     experience.dataset.stage = String(state.stageIndex);
-    experience.style.setProperty("--strength", String(state.strength));
+    experience.style.setProperty("--strength", String(position / MAX_LEVEL));
     experience.style.setProperty("--stage-progress", String(state.localProgress));
 
     ticks.forEach((tick, index) => {
@@ -127,7 +128,7 @@ export function mountApp(
       marker.classList.toggle("is-passed", index < state.stageIndex);
     });
 
-    onLevelChange(state.level);
+    onLevelChange(position);
   };
 
   slider.addEventListener("input", () => {
@@ -140,7 +141,7 @@ export function mountApp(
     canvas,
     slider,
     get level() {
-      return currentLevel;
+      return currentPosition;
     },
     setLevel,
     setLoading(loaded, total) {
