@@ -2,7 +2,7 @@
 
 import { beforeEach, describe, expect, it } from "vitest";
 
-import { mountApp } from "./app";
+import { formatVoteCount, mountApp } from "./app";
 
 describe("liang slider app", () => {
   let root: HTMLElement;
@@ -12,13 +12,13 @@ describe("liang slider app", () => {
     root = document.querySelector<HTMLElement>("#app")!;
   });
 
-  it("渲染 0 到 30 的强度滑杆和 31 个刻度", () => {
+  it("渲染 0 到 30 的整数投票滑杆和 31 个刻度", () => {
     mountApp(root);
 
     const slider = root.querySelector<HTMLInputElement>("#strength-slider")!;
     expect(slider.min).toBe("0");
     expect(slider.max).toBe("30");
-    expect(slider.step).toBe("0.01");
+    expect(slider.step).toBe("1");
     expect(root.querySelectorAll(".tick")).toHaveLength(31);
   });
 
@@ -55,6 +55,29 @@ describe("liang slider app", () => {
     expect(slider.getAttribute("aria-valuetext")).toBe("梁神，24 级，共 30 级");
   });
 
+  it("滑动结束后以当前位置提交投票，并保留端点计数", () => {
+    const controller = mountApp(root);
+    const positions: number[] = [];
+    controller.onVote = (position) => positions.push(position);
+
+    const slider = root.querySelector<HTMLInputElement>("#strength-slider")!;
+    slider.value = "24";
+    slider.dispatchEvent(new Event("input", { bubbles: true }));
+    slider.dispatchEvent(new Event("change", { bubbles: true }));
+    controller.setVotingState({
+      upCount: 1_100,
+      downCount: 8,
+      upVotePoints: 33_000,
+      downVotePoints: 40,
+    });
+
+    expect(positions).toEqual([24]);
+    expect(slider.value).toBe("24");
+    expect(root.querySelector(".vote-total--up number-flow")?.getAttribute("value")).toBe("33000");
+    expect(root.querySelector(".vote-total--down number-flow")?.getAttribute("value")).toBe("40");
+    expect(root.querySelector(".vote-btn")).toBeNull();
+  });
+
   it("显示六个命名节点", () => {
     mountApp(root);
 
@@ -63,5 +86,15 @@ describe("liang slider app", () => {
     );
 
     expect(labels).toEqual(["小难梁", "牢梁", "梁子", "梁圣", "梁神", "梁祖"]);
+  });
+});
+
+describe("formatVoteCount", () => {
+  it("uses compact K, M, and B suffixes for large vote counts", () => {
+    expect(formatVoteCount(999)).toBe("999");
+    expect(formatVoteCount(1_100)).toBe("1.1K");
+    expect(formatVoteCount(10_000)).toBe("10K");
+    expect(formatVoteCount(1_100_000)).toBe("1.1M");
+    expect(formatVoteCount(1_000_000_000)).toBe("1B");
   });
 });

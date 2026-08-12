@@ -5,5 +5,22 @@
   "assets": {
     "binding": "ASSETS",
     "not_found_handling": "single-page-application"
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "liang-slider-db",
+      "database_id": "e8ad6d7e-2cab-44de-92aa-65cf6dd9ef13",
+      "migrations_dir": "./migrations"
+    }
+  ],
+  "kv_namespaces": [
+    {
+      "binding": "KV",
+      "id": "liang-slider-kv-id"
+    }
+  ],
+  "triggers": {
+    "crons": ["0 * * * *"]
   }
 }

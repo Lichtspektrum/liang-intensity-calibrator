@@ -48,6 +48,7 @@ label {
   position: relative;
   isolation: isolate;
   display: grid;
+  grid-template-columns: minmax(0, 1fr) 60px;
   grid-template-rows: auto minmax(0, 1fr) auto auto;
   min-height: 100svh;
   overflow: hidden;
@@ -57,6 +58,14 @@ label {
     radial-gradient(circle at 50% 46%, rgb(255 255 255 / 65%) 0 18%, transparent 52%),
     #e8e9e5;
   transition: color 420ms ease;
+}
+
+.center-content {
+  grid-column: 1;
+  grid-row: 1 / -1;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto auto;
+  min-height: 100%;
 }
 
 .experience::before {
@@ -359,13 +368,55 @@ h1 {
   --rail-inset: 13px;
   position: relative;
   z-index: 10;
-  width: min(760px, 100%);
+  width: min(860px, 100%);
   margin: 6px auto 0;
+}
+
+.slider-vote-layout {
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr) 28px;
+  align-items: start;
+  gap: 10px;
+}
+
+.range-control {
+  min-width: 0;
+}
+
+.vote-total {
+  display: block;
+  margin-top: 12px;
+  padding: 0;
+  border: none;
+  color: currentColor;
+  background: transparent;
+  font-family: "SFMono-Regular", Consolas, monospace;
+  font-size: 16px;
+  font-weight: 700;
+  line-height: 24px;
+  text-align: center;
 }
 
 .range-wrap {
   position: relative;
   height: 48px;
+}
+
+.community-arrow {
+  position: absolute;
+  z-index: 2;
+  top: -37px;
+  left: calc(var(--rail-inset) + (100% - (var(--rail-inset) * 2)) * var(--community-position, 50) / 100);
+  display: block;
+  color: var(--accent);
+  font-family: Arial, sans-serif;
+  font-size: 38px;
+  font-weight: 900;
+  line-height: 1;
+  pointer-events: none;
+  text-shadow: 0 2px 8px color-mix(in srgb, var(--accent) 36%, transparent);
+  transform: translateX(-50%);
+  transition: left 400ms ease, color 280ms ease;
 }
 
 .tick-track {
@@ -514,10 +565,152 @@ h1 {
   letter-spacing: 0.12em;
 }
 
+/* Timeline panel (right) */
+.timeline-panel {
+  grid-column: 2;
+  grid-row: 1 / -1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 20px 8px;
+  z-index: 10;
+  position: relative;
+}
+
+.timeline-header {
+  font-family: "SFMono-Regular", Consolas, monospace;
+  font-size: 8px;
+  letter-spacing: 0.12em;
+  color: var(--muted);
+  text-orientation: mixed;
+  writing-mode: vertical-rl;
+  margin-bottom: 12px;
+}
+
+.timeline-track {
+  flex: 1;
+  position: relative;
+  width: 2px;
+  background: color-mix(in srgb, currentColor 15%, transparent);
+  display: flex;
+  flex-direction: column-reverse;
+  padding: 8px 0;
+  gap: 12px;
+  overflow-y: auto;
+  overflow-x: visible;
+}
+
+.timeline-node {
+  position: relative;
+  background: transparent;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  width: 2px;
+  min-height: 16px;
+}
+
+.timeline-node-dot {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--muted);
+  border: 1px solid color-mix(in srgb, currentColor 30%, transparent);
+  transition: all 200ms ease;
+}
+
+.timeline-node--major .timeline-node-dot {
+  width: 12px;
+  height: 12px;
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+.timeline-node:hover .timeline-node-dot {
+  width: 14px;
+  height: 14px;
+}
+
+.timeline-node-label {
+  position: absolute;
+  right: 12px;
+  font-family: "SFMono-Regular", Consolas, monospace;
+  font-size: 7px;
+  color: var(--muted);
+  white-space: nowrap;
+  opacity: 0;
+  transition: opacity 200ms ease;
+  pointer-events: none;
+}
+
+.timeline-node:hover .timeline-node-label {
+  opacity: 1;
+}
+
+.timeline-return-btn {
+  margin-top: 12px;
+  background: transparent;
+  border: 1px solid color-mix(in srgb, currentColor 30%, transparent);
+  color: var(--muted);
+  font-family: "SFMono-Regular", Consolas, monospace;
+  font-size: 7px;
+  letter-spacing: 0.1em;
+  padding: 4px 8px;
+  cursor: pointer;
+  white-space: nowrap;
+  writing-mode: vertical-rl;
+  text-orientation: mixed;
+}
+
+.timeline-return-btn:hover {
+  color: var(--ink);
+  border-color: color-mix(in srgb, currentColor 60%, transparent);
+}
+
+.experience.is-history-mode .stage-name::after {
+  content: "（历史回看）";
+  font-size: 0.35em;
+  color: var(--muted);
+  margin-left: 8px;
+  font-weight: 400;
+  letter-spacing: 0.05em;
+}
+
 @media (max-width: 700px) {
   .experience {
+    grid-template-columns: minmax(0, 1fr) 44px;
     grid-template-rows: auto minmax(0, 1fr) auto;
-    padding: 20px 16px 16px;
+    padding: 20px 8px 16px;
+  }
+
+  .timeline-panel {
+    padding: 12px 4px;
+  }
+
+  .slider-vote-layout {
+    grid-template-columns: 24px minmax(0, 1fr) 24px;
+    gap: 6px;
+  }
+
+  .vote-total {
+    margin-top: 12px;
+    font-size: 12px;
+  }
+
+  .community-arrow {
+    top: -30px;
+    font-size: 30px;
+  }
+
+  .timeline-header,
+  .timeline-return-btn {
+    font-size: 6px;
   }
 
   .eyebrow {
