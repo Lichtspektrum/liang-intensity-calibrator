@@ -46,6 +46,7 @@ controller.onVote = async (position: number) => {
     const result = await submitVote(fingerprint, position);
     if (result.accepted) {
       localStorage.setItem(getVoteStorageKey(), String(result.userPosition));
+      controller.setUserVotePosition(result.userPosition);
       controller.setCommunityScore({
         score: result.score,
         level: result.level,
@@ -99,33 +100,16 @@ async function loadInitialScore(): Promise<void> {
     const scoreData = await fetchScore();
     controller.setCommunityScore(scoreData);
     const savedPosition = getStoredVotePosition();
-    controller.setLevel(savedPosition ?? 0);
-    requestDraw(savedPosition ?? 0);
+    controller.setUserVotePosition(savedPosition);
+    controller.setLevel(scoreData.level);
+    requestDraw(scoreData.level);
 
     if (renderer) {
       const videoReady = renderer.load();
       await videoReady;
       controller.setReady();
-
-      const targetLevel = savedPosition ?? scoreData.level;
-      const startLevel = 0;
-      const duration = 800;
-      const startTime = performance.now();
-      const animateEntrance = (now: number) => {
-        const elapsed = now - startTime;
-        const t = Math.min(1, elapsed / duration);
-        const eased = 1 - Math.pow(1 - t, 3);
-        const level = startLevel + (targetLevel - startLevel) * eased;
-        controller?.setLevel(level);
-        requestDraw(level);
-        if (t < 1) {
-          requestAnimationFrame(animateEntrance);
-        } else {
-          controller?.setLevel(targetLevel);
-          requestDraw(targetLevel);
-        }
-      };
-      requestAnimationFrame(animateEntrance);
+      controller.setLevel(scoreData.level);
+      requestDraw(scoreData.level);
     }
   } catch {
     if (renderer) {

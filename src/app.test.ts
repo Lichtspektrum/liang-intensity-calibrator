@@ -78,6 +78,33 @@ describe("liang slider app", () => {
     expect(root.querySelector(".vote-btn")).toBeNull();
   });
 
+  it("默认展示社区结果，并把用户投票位置作为独立标记保留", () => {
+    const controller = mountApp(root);
+
+    controller.setCommunityScore({
+      score: 22.5,
+      level: 22.5,
+      stage: "梁圣",
+      upCount: 2,
+      downCount: 0,
+      upVotePoints: 45,
+      downVotePoints: 0,
+      isColdStart: true,
+      recentEvents: [],
+    });
+    controller.setUserVotePosition(30);
+
+    const slider = root.querySelector<HTMLInputElement>("#strength-slider")!;
+    const ghostThumb = root.querySelector<HTMLElement>(".community-ghost-thumb")!;
+    const status = root.querySelector<HTMLElement>(".vote-status")!;
+
+    expect(slider.value).toBe("30");
+    expect(root.querySelector(".stage-name")?.textContent).toBe("梁圣");
+    expect(status.textContent).toContain("你已投票");
+    expect(status.textContent).toContain("阴影圆点是社区结果");
+    expect(ghostThumb.style.getPropertyValue("--community-position")).toBe("75");
+  });
+
   it("显示六个命名节点", () => {
     mountApp(root);
 

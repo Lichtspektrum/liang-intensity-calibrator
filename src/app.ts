@@ -8,10 +8,12 @@ export interface AppController {
   readonly slider: HTMLInputElement;
   readonly level: number;
   setLevel(level: number): void;
+  setDisplayLevel(level: number): void;
   setLoading(loaded: number, total: number): void;
   setReady(): void;
   setError(message: string): void;
   setCommunityScore(score: ScoreData): void;
+  setUserVotePosition(position: number | null): void;
   setVotingState(state: {
     upCount: number;
     downCount: number;
@@ -112,9 +114,10 @@ export function mountApp(
               <number-flow class="vote-total-flow" value="0"></number-flow>
             </output>
             <div class="range-control">
+              <p class="vote-status">主滑块表示你的投票，阴影圆点表示社区结果</p>
               <div class="range-wrap">
                 <div class="tick-track">${createTicks()}</div>
-                <span class="community-arrow" aria-label="社区当前分值" title="社区当前分值">↓</span>
+                <span class="community-ghost-thumb" aria-label="社区当前分值" title="社区当前分值"></span>
                 <input
                   id="strength-slider"
                   class="strength-slider"
@@ -159,16 +162,18 @@ export function mountApp(
 
   const voteCountUp = root.querySelector<NumberFlow>(".vote-total--up number-flow")!;
   const voteCountDown = root.querySelector<NumberFlow>(".vote-total--down number-flow")!;
-  const communityArrow = root.querySelector<HTMLElement>(".community-arrow")!;
+  const voteStatus = root.querySelector<HTMLElement>(".vote-status")!;
+  const communityGhostThumb = root.querySelector<HTMLElement>(".community-ghost-thumb")!;
 
   const timelineTrack = root.querySelector<HTMLElement>(".timeline-track")!;
   const timelineReturnBtn = root.querySelector<HTMLButtonElement>(".timeline-return-btn")!;
   const timelineHeader = root.querySelector<HTMLElement>(".timeline-header")!;
 
   let currentPosition = 0;
-  let currentMode: "idle" | "voting" | "viewing-history" = "idle";
+  let displayPosition = 0;
+  let currentMode: "idle" | "previewing-vote" | "viewing-history" = "idle";
   let communityLevel = 0;
-  let hasUserPosition = false;
+  let userVotePosition: number | null = null;
 
   const updateVotePoints = (element: NumberFlow, value: number): void => {
     element.setAttribute("value", String(value));
@@ -181,7 +186,6 @@ export function mountApp(
 
   const updateVisuals = (position: number) => {
     const state = getProgression(position);
-    slider.value = String(position);
     slider.setAttribute(
       "aria-valuetext",
       `${state.stage}，${state.level} 级，共 ${MAX_LEVEL} 级`,
@@ -204,22 +208,34 @@ export function mountApp(
     });
   };
 
-  const setLevel = (rawLevel: number): void => {
+  const setDisplayLevel = (rawLevel: number): void => {
     const position = clampPosition(rawLevel);
-    currentPosition = position;
+    displayPosition = position;
     updateVisuals(position);
     onLevelChange(position);
   };
 
+  const setUserSliderPosition = (rawLevel: number): void => {
+    const position = clampPosition(rawLevel);
+    currentPosition = position;
+    slider.value = String(position);
+  };
+
+  const setLevel = (rawLevel: number): void => {
+    setDisplayLevel(rawLevel);
+    setUserSliderPosition(rawLevel);
+  };
+
   slider.addEventListener("input", () => {
     if (currentMode === "viewing-history") return;
-    currentMode = "voting";
-    hasUserPosition = true;
-    setLevel(Number(slider.value));
+    currentMode = "previewing-vote";
+    const position = Number(slider.value);
+    setUserSliderPosition(position);
+    setDisplayLevel(position);
   });
 
   slider.addEventListener("change", () => {
-    if (currentMode === "voting") {
+    if (currentMode === "previewing-vote") {
       currentMode = "idle";
       const controller = (root as HTMLElement & { _controller?: AppController })._controller;
       controller?.onVote?.(currentPosition);
@@ -237,9 +253,10 @@ export function mountApp(
     canvas,
     slider,
     get level() {
-      return currentPosition;
+      return displayPosition;
     },
     setLevel,
+    setDisplayLevel,
     setLoading(loaded, total) {
       loadState.textContent = loaded >= total ? "连续祖力已就绪" : "载入连续祖力…";
     },
@@ -255,10 +272,13 @@ export function mountApp(
     },
     setCommunityScore(scoreData) {
       communityLevel = scoreData.level;
-      communityArrow.style.setProperty("--community-position", String((communityLevel / MAX_LEVEL) * 100));
-      communityArrow.setAttribute("aria-label", `社区当前分值 ${communityLevel.toFixed(2)}`);
-      if (!hasUserPosition && currentMode === "idle") {
-        setLevel(communityLevel);
+      communityGhostThumb.style.setProperty(
+        "--community-position",
+        String((communityLevel / MAX_LEVEL) * 100),
+      );
+      communityGhostThumb.setAttribute("aria-label", `社区当前分值 ${communityLevel.toFixed(2)}`);
+      if (currentMode === "idle") {
+        setDisplayLevel(communityLevel);
       }
       controller.setVotingState({
         upCount: scoreData.upCount,
@@ -267,6 +287,19 @@ export function mountApp(
         downVotePoints: scoreData.downVotePoints,
       });
       controller.setTimelineEvents(scoreData.recentEvents);
+    },
+    setUserVotePosition(position) {
+      userVotePosition = position === null ? null : clampPosition(position);
+      if (userVotePosition === null) {
+        setUserSliderPosition(communityLevel);
+        voteStatus.textContent = "主滑块表示你的投票，阴影圆点表示社区结果";
+        return;
+      }
+      voteStatus.textContent = `你已投票：${Math.round(userVotePosition)} / 30；阴影圆点是社区结果`;
+      setUserSliderPosition(userVotePosition);
+      if (currentMode === "idle") {
+        setDisplayLevel(communityLevel);
+      }
     },
     setVotingState(state) {
       updateVotePoints(voteCountUp, state.upVotePoints);
@@ -294,7 +327,7 @@ export function mountApp(
     },
     enterHistoryMode(date, level) {
       currentMode = "viewing-history";
-      setLevel(level);
+      setDisplayLevel(level);
       slider.disabled = true;
       timelineReturnBtn.hidden = false;
       experience.classList.add("is-history-mode");
@@ -306,7 +339,7 @@ export function mountApp(
       timelineReturnBtn.hidden = true;
       experience.classList.remove("is-history-mode");
       timelineHeader.textContent = "时间线";
-      setLevel(communityLevel);
+      setDisplayLevel(communityLevel);
     },
   };
 

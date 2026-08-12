@@ -383,6 +383,15 @@ h1 {
   min-width: 0;
 }
 
+.vote-status {
+  margin: 0 0 8px;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-align: center;
+}
+
 .vote-total {
   display: block;
   margin-top: 12px;
@@ -402,21 +411,24 @@ h1 {
   height: 48px;
 }
 
-.community-arrow {
+.community-ghost-thumb {
   position: absolute;
-  z-index: 2;
-  top: -37px;
+  z-index: 1;
+  top: 11px;
   left: calc(var(--rail-inset) + (100% - (var(--rail-inset) * 2)) * var(--community-position, 50) / 100);
   display: block;
-  color: var(--accent);
-  font-family: Arial, sans-serif;
-  font-size: 38px;
-  font-weight: 900;
-  line-height: 1;
+  width: 26px;
+  height: 26px;
+  border: 2px solid color-mix(in srgb, currentColor 42%, transparent);
+  border-radius: 50%;
+  background:
+    radial-gradient(circle, color-mix(in srgb, var(--accent) 82%, transparent) 0 3px, transparent 3.5px),
+    color-mix(in srgb, var(--thumb-bg) 55%, transparent);
+  opacity: 0.45;
   pointer-events: none;
-  text-shadow: 0 2px 8px color-mix(in srgb, var(--accent) 36%, transparent);
   transform: translateX(-50%);
-  transition: left 400ms ease, color 280ms ease;
+  box-shadow: 0 4px 14px rgb(0 0 0 / 10%);
+  transition: left 400ms ease, opacity 280ms ease;
 }
 
 .tick-track {
@@ -703,9 +715,15 @@ h1 {
     font-size: 12px;
   }
 
-  .community-arrow {
-    top: -30px;
-    font-size: 30px;
+  .vote-status {
+    margin-bottom: 6px;
+    font-size: 9px;
+  }
+
+  .community-ghost-thumb {
+    top: 13px;
+    width: 22px;
+    height: 22px;
   }
 
   .timeline-header,
