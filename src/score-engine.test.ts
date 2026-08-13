@@ -3,7 +3,6 @@ import { describe, expect, it } from "vitest";
 import {
   DEFAULT_SCORE,
   HALF_LIFE_DAYS,
-  applyNewsDelta,
   clampScore,
   createInitialScoreState,
   decayScore,
@@ -86,21 +85,6 @@ describe("score engine", () => {
       const decayed = decayToNow(state, now);
       expect(decayed.lastUpdateTs).toBe(now);
       expect(decayed.score).toBeCloseTo(7.5);
-    });
-  });
-
-  describe("applyNewsDelta", () => {
-    it("adds positive delta", () => {
-      expect(applyNewsDelta(0, 3)).toBe(3);
-    });
-
-    it("adds negative delta", () => {
-      expect(applyNewsDelta(0, -3)).toBe(-3);
-    });
-
-    it("clamps at boundaries", () => {
-      expect(applyNewsDelta(13, 5)).toBe(15);
-      expect(applyNewsDelta(-13, -5)).toBe(-15);
     });
   });
 

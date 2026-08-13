@@ -52,20 +52,6 @@ export async function applyVotePointsToScore(
   return newState;
 }
 
-export async function applyNewsDeltaToScore(env: Env, delta: number): Promise<ScoreState> {
-  const now = Date.now();
-  const state = await getScoreState(env);
-  const decayed = decayToNow(state, now);
-  const newScore = clampScore(decayed.score + delta);
-  const newState: ScoreState = {
-    ...decayed,
-    score: newScore,
-    lastUpdateTs: now,
-  };
-  await env.KV.put(CURRENT_SCORE_KEY, JSON.stringify(newState));
-  return newState;
-}
-
 export interface TodayVoteSummary {
   positiveCount: number;
   negativeCount: number;

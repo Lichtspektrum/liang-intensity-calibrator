@@ -1,5 +1,3 @@
-import { COLD_START_VOTER_THRESHOLD, COLD_START_DAY_THRESHOLD, MAX_NEWS_EVENT_DELTA } from "../score-engine";
-import { getScoreState, applyNewsDeltaToScore } from "../api/score";
 import type { Env } from "../api/shared";
 
 const TARGET_KEYWORDS = ["梁文峰", "DeepSeek", "深度求索", "deepseek", "梁文锋"];
@@ -267,27 +265,4 @@ export async function runNewsCollection(env: Env): Promise<void> {
       .run();
   }
 
-  await updateColdStartNewsDelta(env, clusters);
-}
-
-async function updateColdStartNewsDelta(env: Env, clusters: AnalyzedNews[][]): Promise<void> {
-  const state = await getScoreState(env);
-
-  const isCold =
-    state.cumulativeVoters < COLD_START_VOTER_THRESHOLD;
-
-  if (!isCold) return;
-
-  let totalDelta = 0;
-  for (const cluster of clusters) {
-    const avgPolarity = cluster.reduce((s, c) => s + c.polarity, 0) / cluster.length;
-    const maxImpact = Math.min(1, Math.max(...cluster.map((c) => c.impact)) * (1 + (cluster.length - 1) * 0.2));
-    totalDelta += avgPolarity * maxImpact * MAX_NEWS_EVENT_DELTA;
-  }
-
-  totalDelta = Math.max(-MAX_NEWS_EVENT_DELTA, Math.min(MAX_NEWS_EVENT_DELTA, totalDelta));
-
-  if (Math.abs(totalDelta) > 0.01) {
-    await applyNewsDeltaToScore(env, totalDelta);
-  }
 }

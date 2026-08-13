@@ -24,7 +24,7 @@
 7. 作为用户，我可以从历史回看状态回到实时社区分值。
 8. 作为系统，同一 fingerprint 每天只有一条投票记录，通过 upsert 支持改投。
 9. 作为系统，同一 IP 每天最多新增 5 个投票者，用 KV 计数并以 hash 形式存储 IP。
-10. 作为系统，每小时采集相关新闻，写入时间线；冷启动阶段相关新闻可以轻微影响分值。
+10. 作为系统，每小时采集相关新闻并写入时间线，但新闻不影响社区分值。
 11. 作为系统，每小时记录北京时间当天的分值快照，供时间线查询。
 12. 作为系统，不做 WebSocket 实时推送；页面加载或用户操作时通过 HTTP API 获取最新状态。
 
@@ -78,7 +78,6 @@ DEFAULT_SCORE = 0
 HALF_LIFE_DAYS = 30
 COLD_START_VOTER_THRESHOLD = 500
 COLD_START_DAY_THRESHOLD = 7
-MAX_NEWS_EVENT_DELTA = 5
 IP_DAILY_VOTE_LIMIT = 5
 ```
 
@@ -88,7 +87,7 @@ IP_DAILY_VOTE_LIMIT = 5
 - 读取分值时按月半衰期向默认值 0 衰减：`score * exp(-ln(2) * ageDays / 30)`。
 - 投票提交后，分值由当天所有独立投票者的平均 `position` 计算：`score = totalVotePoints / uniqueVoters`。
 - 没有投票者时，默认分值为 `0`。
-- 新闻冷启动增量直接加到当前分值并 clamp 到 `-15..15`。
+- 新闻仅用于时间线事件，不参与分值计算。
 - 阶段和图片共同使用四舍五入后的分值：`-15..-10 小难梁`、`-9..-4 牢梁`、`-3..2 梁子`、`3..8 梁圣`、`9..14 梁神`、`15 梁祖`。
 
 ### D1 Schema
@@ -169,7 +168,6 @@ CREATE TABLE IF NOT EXISTS app_state (
 4. 如果 AI 不可用或失败，降级为关键词相关性判断。
 5. 相关事件按标题前缀字符重叠做简单聚类。
 6. 写入 `news_events`。
-7. 冷启动阶段根据 `polarity * impact * MAX_NEWS_EVENT_DELTA` 累加新闻分值增量。
 
 当前实现没有接入微博、知乎、B站、V2EX 或 DeepSeek 官方博客。
 
@@ -178,7 +176,7 @@ CREATE TABLE IF NOT EXISTS app_state (
 当前测试覆盖：
 
 - `src/score-domain.test.ts`：`-15..15` clamp、阶段、图片编号、轨道百分比和有符号格式。
-- `src/score-engine.test.ts`：投票平均值、分值衰减、新闻增量和阶段映射。
+- `src/score-engine.test.ts`：投票平均值、分值衰减和阶段映射。
 - `src/app.test.ts`：`-15..15` 投票滑杆、社区分值、票值展示、历史模式等 DOM 行为。
 - `src/api` 相关测试：Worker Assets 和 API 行为。
 - `tests/slider.spec.ts`：浏览器交互。

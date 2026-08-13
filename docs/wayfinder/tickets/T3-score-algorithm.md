@@ -15,7 +15,6 @@ DEFAULT_SCORE = 15
 HALF_LIFE_DAYS = 30
 COLD_START_VOTER_THRESHOLD = 500
 COLD_START_DAY_THRESHOLD = 7
-MAX_NEWS_EVENT_DELTA = 5
 IP_DAILY_VOTE_LIMIT = 5
 ```
 
@@ -37,7 +36,7 @@ score = clamp(totalVotePoints / uniqueVoters, 0, 30)
 
 - 没有投票时返回默认值 15。
 - `position >= 15` 归为 `up`，`position < 15` 归为 `down`，用于统计两侧票数和票值。
-- 新闻冷启动增量直接加到当前分值，并 clamp 到 `0-30`。
+- 新闻仅用于时间线事件，不参与分值计算。
 - `level` 等于保留两位小数的 `score`。
 
 ## Stage Mapping
