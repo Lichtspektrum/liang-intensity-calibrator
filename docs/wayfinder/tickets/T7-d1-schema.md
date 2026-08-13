@@ -1,42 +1,87 @@
 # T7: D1 数据库 schema 设计
 
-**类型**: grilling（HITL）
-**状态**: open
+**类型**: implemented
+**状态**: done
 **依赖**: T3（打分算法精确公式）
 **阻塞**: T11（API 契约）
 
-## Question
+## Current Schema
 
-基于 T3 确定的打分算法，设计 Cloudflare D1（SQLite）的数据库 schema。需要存储的数据：
+当前 D1 schema 来自：
 
-1. **投票记录**：
-   - 指纹 ID（fingerprintjs 生成的 hash）
-   - IP 地址（hash 后存储，不存明文）
-   - 投票方向（Up/Down）
-   - 投票日期（用于每日一票校验和日聚合）
-   - 创建时间、更新时间（支持改票）
-   - 索引：按指纹+日期查询（防重复投票）、按日期聚合
-2. **每日投票聚合**（可选，由 T3 公式决定是否需要）：
-   - 日期
-   - 当日 Up 总数、Down 总数
-   - 当日独立投票人数
-3. **新闻事件**（NewsEvent）：
-   - 事件日期
-   - 来源（微博/知乎/B站/官方/RSS等）
-   - 标题/摘要
-   - 原文 URL
-   - AI 分析结果：极性 polarity、影响力 impact
-   - 社区热度指标（讨论量/阅读量等，字段取决于 T1 调研）
-   - 是否为合并事件（同日同类新闻）、合并的来源列表
-   - 创建时间
-4. **每日分值快照**（TimelineMarker 的数据来源）：
-   - 日期
-   - 当日最终分值（0-100）
-   - 当日 Up/Down 数
-   - 关联的重大事件 ID（如有）
+- `migrations/0001_init.sql`
+- `migrations/0002_add_vote_position.sql`
 
-### 需要决策的
+```sql
+CREATE TABLE IF NOT EXISTS daily_votes (
+  date TEXT PRIMARY KEY,
+  up_count INTEGER NOT NULL DEFAULT 0,
+  down_count INTEGER NOT NULL DEFAULT 0,
+  unique_voters INTEGER NOT NULL DEFAULT 0,
+  news_delta REAL NOT NULL DEFAULT 0,
+  final_score REAL
+);
 
-- 投票是否需要存明细行，还是只存每日聚合？（取决于衰减公式——EMA 只需要当前 score 和当日增量，可以不存明细；但明细对数据分析/防刷票审计有用）
-- IP hash 的方式（SHA-256？需要加盐吗？）
-- 是否需要定期清理旧的明细投票记录（隐私+D1 存储限额）
+CREATE TABLE IF NOT EXISTS votes (
+  fingerprint TEXT NOT NULL,
+  ip_hash TEXT NOT NULL,
+  date TEXT NOT NULL,
+  direction TEXT NOT NULL CHECK(direction IN ('up', 'down')),
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL,
+  position REAL,
+  PRIMARY KEY (fingerprint, date)
+);
+CREATE INDEX IF NOT EXISTS idx_votes_ip_date ON votes(ip_hash, date);
+
+CREATE TABLE IF NOT EXISTS news_events (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  date TEXT NOT NULL,
+  title TEXT NOT NULL,
+  summary TEXT,
+  polarity REAL NOT NULL,
+  impact REAL NOT NULL,
+  source_urls TEXT NOT NULL,
+  sources TEXT NOT NULL,
+  heat REAL DEFAULT 0,
+  is_major INTEGER DEFAULT 0,
+  created_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_events_date ON news_events(date);
+
+CREATE TABLE IF NOT EXISTS score_snapshots (
+  date TEXT PRIMARY KEY,
+  score REAL NOT NULL,
+  level REAL NOT NULL,
+  stage TEXT NOT NULL,
+  up_count INTEGER NOT NULL,
+  down_count INTEGER NOT NULL,
+  major_event_id INTEGER,
+  FOREIGN KEY (major_event_id) REFERENCES news_events(id)
+);
+
+CREATE TABLE IF NOT EXISTS app_state (
+  key TEXT PRIMARY KEY,
+  value TEXT NOT NULL
+);
+```
+
+## Semantics
+
+- `votes` is the authoritative table for same-day voter records. `fingerprint + date` is unique, so same-day revotes are implemented with upsert.
+- `position` stores the user's integer vote position in the `0-30` range.
+- `direction` is derived from `position`: `position >= 15` is `up`, otherwise `down`.
+- `score_snapshots` is the timeline data source and is written by the hourly scheduled task.
+- `news_events` stores AI-analyzed or keyword-fallback news events.
+- `daily_votes` currently exists but is not the primary read/write path for score calculation.
+
+## KV Companion State
+
+- `score_state`: current score state.
+- `vote:ip:<date>:<ip_hash>`: per-IP daily new-voter count, TTL 48 hours.
+- `news:url:<hash>`: processed news URL marker, TTL 7 days.
+
+## Notes
+
+- `ip_hash` is SHA-256 over `liang-slider-ip:<ip>`.
+- Old documentation used final score 0-100; current D1 values are 0-30.

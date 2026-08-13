@@ -1,23 +1,29 @@
 {
-  "name": "liang-slider",
+  "name": "ds-liang",
   "compatibility_date": "2026-08-08",
   "main": "./src/worker.ts",
   "assets": {
     "binding": "ASSETS",
     "not_found_handling": "single-page-application"
   },
+  "routes": [
+    {
+      "pattern": "ds.uu0uu.com",
+      "custom_domain": true
+    }
+  ],
   "d1_databases": [
     {
       "binding": "DB",
-      "database_name": "liang-slider-db",
-      "database_id": "e8ad6d7e-2cab-44de-92aa-65cf6dd9ef13",
+      "database_name": "ds-liang-db",
+      "database_id": "6f99418d-8b83-42fb-8aaf-e9c8b802982d",
       "migrations_dir": "./migrations"
     }
   ],
   "kv_namespaces": [
     {
       "binding": "KV",
-      "id": "liang-slider-kv-id"
+      "id": "d245a898d7c741fba142bda058e41a00"
     }
   ],
   "triggers": {

@@ -1,23 +1,29 @@
-# T4: 左侧投票面板 UI 原型
+# T4: 投票滑杆 UI 原型
 
-**类型**: prototype（HITL）
-**状态**: open
-**阻塞**: 无（但 T11 API 契约依赖面板的交互细节）
+**类型**: implemented
+**状态**: done
+**阻塞**: 无（但 T11 API 契约依赖投票交互细节）
 
-## Question
+## Current Implementation
 
-在现有界面左侧红框区域（竖长矩形，约屏宽 1/10，全高）设计投票面板。已确定的约束：
+当前实现没有独立的 Up/Down 双按钮面板。投票交互合并进主滑杆：
 
-- Up/Down 两个按钮（Q2=up/down 按钮，非拖动投票）
-- 中间显示投票比例竖条（Q20=C），类似 YouTube 点赞条的竖向版本
-- 显示当前 Up/Down 票数
-- 投票后按钮高亮，当天内可改投（Q2=每天一票可改投）
-- 面板风格需与现有"控制台/仪表盘"美学一致（单色、细边框、衬线字体、扫描线等——参考现有 CSS 风格）
+- 主滑杆范围为 `0-30`，`step=1`，表示用户当天要提交的投票位置。
+- 阴影圆点 `.community-ghost-thumb` 表示当前社区共识分值。
+- 左右两侧显示低强度和高强度累计票值：`downVotePoints` / `upVotePoints`。
+- 用户改变滑杆并触发 `change` 后提交投票。
+- 当天再次滑动会修改自己的投票位置。
+- 投票位置 `<15` 归为低强度/Down，`>=15` 归为高强度/Up。
 
-### 需要原型化的内容
+## UI Elements
 
-1. HTML 结构和 CSS 样式（在现有 styles.css 基础上添加）
-2. 未投票状态、已投 Up 状态、已投 Down 状态的视觉区分
-3. 比例竖条的动画效果（新投票进来时的平滑移动——虽然 Q14=C 不做实时推送，但页面加载时可以有个填充动画）
-4. 移动端适配（窄屏时投票面板如何放置）
-5. 投票确认/改票的反馈动画
+- `.slider-vote-layout`
+- `.vote-total--down`
+- `.vote-total--up`
+- `.community-ghost-thumb`
+- `.strength-slider`
+- `.vote-status`
+
+## Mobile Behavior
+
+移动端沿用主控制面板布局，不再需要单独处理左右投票侧栏。
