@@ -86,6 +86,7 @@ export function formatVoteCount(count: number): string {
 export function mountApp(
   root: HTMLElement,
   onScoreChange: ScoreChangeHandler = () => undefined,
+  initialPoster?: HTMLImageElement,
 ): AppController {
   root.innerHTML = `
     <div class="experience" data-stage="0">
@@ -161,7 +162,9 @@ export function mountApp(
       ${createTimelinePanel()}
     </div>
   `;
-
+  if (initialPoster) {
+    root.querySelector(".portrait-shell")?.append(initialPoster);
+  }
   const experience = root.querySelector<HTMLElement>(".experience")!;
   const canvas = root.querySelector<HTMLCanvasElement>(".portrait-canvas")!;
   const slider = root.querySelector<HTMLInputElement>("#strength-slider")!;

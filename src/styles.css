@@ -34,7 +34,20 @@ label {
 }
 
 #app {
+  position: relative;
   min-height: 100svh;
+}
+
+#app > .ssr-poster {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  display: block;
+  width: min(49vh, 550px, 76vw);
+  height: auto;
+  aspect-ratio: 1;
+  object-fit: cover;
+  transform: translate(-50%, -50%);
 }
 
 .experience {
@@ -224,6 +237,16 @@ h1 {
   height: 100%;
   background:
     radial-gradient(circle at 50% 38%, #f7f7f5, #cfd1cf 70%);
+  object-fit: cover;
+}
+
+.portrait-shell > .ssr-poster {
+  position: absolute;
+  z-index: 2;
+  inset: 0;
+  display: block;
+  width: 100%;
+  height: 100%;
   object-fit: cover;
 }
 

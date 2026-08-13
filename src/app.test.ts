@@ -12,6 +12,16 @@ describe("liang slider app", () => {
     root = document.querySelector<HTMLElement>("#app")!;
   });
 
+  it("挂载客户端界面时保留服务端首帧节点", () => {
+    const poster = document.createElement("img");
+    poster.className = "ssr-poster";
+    root.append(poster);
+
+    mountApp(root, undefined, poster);
+
+    expect(root.querySelector(".portrait-shell > .ssr-poster")).toBe(poster);
+  });
+
   it("渲染 -15 到 15 的整数投票滑杆和 31 个刻度", () => {
     mountApp(root);
 

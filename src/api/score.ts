@@ -131,34 +131,32 @@ export async function getRecentEvents(env: Env, limit = 15) {
   }));
 }
 
-export async function handleGetScore(env: Env): Promise<Response> {
+export async function getScoreData(env: Env): Promise<ScoreResponse> {
   const state = await getScoreState(env);
   const stage = scoreToStage(state.score);
-  const {
-    positiveCount,
-    negativeCount,
-    neutralCount,
-    positivePoints,
-    negativePoints,
-  } = await getTodayVoteCounts(env);
+  const [voteCounts, recentEvents] = await Promise.all([
+    getTodayVoteCounts(env),
+    getRecentEvents(env, 15),
+  ]);
   const isColdStart =
     state.cumulativeVoters < COLD_START_VOTER_THRESHOLD &&
     state.daysSinceLaunch < COLD_START_DAY_THRESHOLD;
-  const recentEvents = await getRecentEvents(env, 15);
 
-  const response: ScoreResponse = {
+  return {
     score: Math.round(state.score * 100) / 100,
     stage,
-    positiveCount,
-    negativeCount,
-    neutralCount,
-    positivePoints,
-    negativePoints,
+    positiveCount: voteCounts.positiveCount,
+    negativeCount: voteCounts.negativeCount,
+    neutralCount: voteCounts.neutralCount,
+    positivePoints: voteCounts.positivePoints,
+    negativePoints: voteCounts.negativePoints,
     isColdStart,
     recentEvents,
   };
+}
 
-  return jsonResponse(response, {
+export async function handleGetScore(env: Env): Promise<Response> {
+  return jsonResponse(await getScoreData(env), {
     headers: { "Cache-Control": "no-store" },
   });
 }

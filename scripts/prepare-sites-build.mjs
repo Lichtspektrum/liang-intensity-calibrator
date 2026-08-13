@@ -28,7 +28,7 @@ await writeFile(
 );
 
 await Promise.all(
-  ["assets", "frames", "portraits", "index.html"].map((path) =>
+  ["assets", "frames", "portraits", "video", "index.html"].map((path) =>
     rm(resolve(dist, path), { force: true, recursive: true }),
   ),
 );

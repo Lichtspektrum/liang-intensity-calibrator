@@ -1,15 +1,12 @@
 import "./styles.css";
 
-import FingerprintJS from "@fingerprintjs/fingerprintjs";
 import "number-flow";
 
 import { type AppController, mountApp } from "./app";
-import { fetchScore, fetchTimelineDay, submitVote } from "./api";
-import {
-  createPortraitRenderer,
-  type PortraitRenderer,
-} from "./portrait-renderer";
+import { fetchTimelineDay, submitVote } from "./api";
+import { readInitialState } from "./initial-state";
 import { MAX_SCORE, MIN_SCORE } from "./score-domain";
+import { createVideoRenderer, type VideoRenderer } from "./video-renderer";
 
 const app = document.querySelector<HTMLElement>("#app");
 
@@ -17,9 +14,17 @@ if (!app) {
   throw new Error("找不到应用挂载节点");
 }
 
+const initialScoreData = readInitialState();
+const initialPosterElement = app.querySelector<HTMLImageElement>(".ssr-poster");
+
+if (!initialPosterElement) {
+  throw new Error("缺少服务端首帧");
+}
+const initialPoster = initialPosterElement;
+
 let controller: AppController | null = null;
-let renderer: PortraitRenderer | null = null;
-let fingerprint: string | null = null;
+let renderer: VideoRenderer | null = null;
+let fingerprintPromise: Promise<string> | null = null;
 
 function getVoteStorageKey(): string {
   const date = new Intl.DateTimeFormat("en-CA", {
@@ -36,17 +41,16 @@ function getStoredVotePosition(): number | null {
 }
 
 const requestDraw = (score: number): void => {
-  void renderer?.render(score).catch(() => {
-    controller?.setError("图像加载失败，请刷新重试");
-  });
+  renderer?.render(score);
 };
 
-controller = mountApp(app, requestDraw);
-renderer = createPortraitRenderer(controller.canvas);
+controller = mountApp(app, requestDraw, initialPoster);
+renderer = createVideoRenderer(controller.canvas);
 
 controller.onVote = async (position: number) => {
-  if (!fingerprint || !controller) return;
+  if (!controller) return;
   try {
+    const fingerprint = await getFingerprint();
     const result = await submitVote(fingerprint, position);
     if (result.accepted) {
       localStorage.setItem(getVoteStorageKey(), String(result.userPosition));
@@ -89,29 +93,30 @@ controller.onHistoryExit = () => {
   controller?.exitHistoryMode();
 };
 
-async function initFingerprint(): Promise<void> {
-  try {
-    const fp = await FingerprintJS.load();
-    const result = await fp.get();
-    fingerprint = result.visitorId;
-  } catch {
-    fingerprint = `fallback-${Math.random().toString(36).slice(2)}-${Date.now()}`;
-  }
+function getFingerprint(): Promise<string> {
+  fingerprintPromise ??= import("@fingerprintjs/fingerprintjs")
+    .then(async ({ default: FingerprintJS }) => {
+      const fp = await FingerprintJS.load();
+      const result = await fp.get();
+      return result.visitorId;
+    })
+    .catch(() => `fallback-${crypto.randomUUID()}`);
+  return fingerprintPromise;
 }
 
-async function loadInitialScore(): Promise<void> {
+async function loadInitialView(): Promise<void> {
   if (!controller || !renderer) return;
-  const activeRenderer = renderer;
   try {
-    const scoreData = await fetchScore();
-    controller.setCommunityScore(scoreData);
+    controller.setCommunityScore(initialScoreData);
     const savedPosition = getStoredVotePosition();
     controller.setUserVotePosition(savedPosition);
-    controller.setScore(scoreData.score);
-    await activeRenderer.render(scoreData.score);
+    controller.setScore(initialScoreData.score);
+    await renderer.drawPoster(initialPoster, initialScoreData.score);
+    initialPoster.remove();
+    await renderer.loadVideo();
     controller.setReady();
   } catch {
-    controller.setError("加载失败，请刷新重试");
+    controller.setError("连续画面加载失败，请刷新重试");
   }
 }
 
@@ -133,7 +138,7 @@ async function bootstrap(): Promise<void> {
   } catch {
     // Continue loading so an unavailable local reset does not block the app.
   }
-  await Promise.all([initFingerprint(), loadInitialScore()]);
+  await loadInitialView();
 }
 
 void bootstrap();

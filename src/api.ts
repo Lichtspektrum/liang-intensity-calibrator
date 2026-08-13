@@ -55,10 +55,6 @@ async function fetchJson<T>(url: string, options?: RequestInit): Promise<T> {
   return response.json() as Promise<T>;
 }
 
-export async function fetchScore(): Promise<ScoreData> {
-  return fetchJson<ScoreData>("/api/score");
-}
-
 export async function submitVote(
   fingerprint: string,
   position: number,

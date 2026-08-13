@@ -51,6 +51,47 @@ declare interface KVListResult {
   cursor?: string;
 }
 
+declare interface R2HTTPMetadata {
+  contentType?: string;
+  contentLanguage?: string;
+  contentDisposition?: string;
+  contentEncoding?: string;
+  cacheControl?: string;
+  cacheExpiry?: Date;
+}
+
+declare interface R2Object {
+  key: string;
+  size: number;
+  etag: string;
+  httpEtag: string;
+  uploaded: Date;
+  httpMetadata?: R2HTTPMetadata;
+  writeHttpMetadata(headers: Headers): void;
+}
+
+declare interface R2ObjectBody extends R2Object {
+  body: ReadableStream;
+  bodyUsed: boolean;
+  arrayBuffer(): Promise<ArrayBuffer>;
+  text(): Promise<string>;
+  json<T>(): Promise<T>;
+  blob(): Promise<Blob>;
+}
+
+declare type R2Range =
+  | { offset: number; length?: number }
+  | { offset?: number; length: number }
+  | { suffix: number };
+
+declare interface R2Bucket {
+  head(key: string): Promise<R2Object | null>;
+  get(
+    key: string,
+    options?: { range?: R2Range | Headers; onlyIf?: Headers },
+  ): Promise<R2ObjectBody | R2Object | null>;
+}
+
 declare interface Fetcher {
   fetch(input: RequestInfo, init?: RequestInit): Promise<Response>;
   run?: (model: string, options: Record<string, unknown>) => Promise<Record<string, unknown>>;

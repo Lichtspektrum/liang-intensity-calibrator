@@ -2,6 +2,7 @@ export interface Env {
   ASSETS: { fetch(request: Request): Promise<Response> };
   DB: D1Database;
   KV: KVNamespace;
+  MEDIA: R2Bucket;
   AI?: Fetcher;
 }
 
