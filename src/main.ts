@@ -6,9 +6,10 @@ import "number-flow";
 import { type AppController, mountApp } from "./app";
 import { fetchScore, fetchTimelineDay, submitVote } from "./api";
 import {
-  createEvolutionVideoRenderer,
-  type EvolutionVideoRenderer,
-} from "./video-renderer";
+  createPortraitRenderer,
+  type PortraitRenderer,
+} from "./portrait-renderer";
+import { MAX_SCORE, MIN_SCORE } from "./score-domain";
 
 const app = document.querySelector<HTMLElement>("#app");
 
@@ -17,28 +18,31 @@ if (!app) {
 }
 
 let controller: AppController | null = null;
-let renderer: EvolutionVideoRenderer | null = null;
+let renderer: PortraitRenderer | null = null;
 let fingerprint: string | null = null;
 
 function getVoteStorageKey(): string {
   const date = new Intl.DateTimeFormat("en-CA", {
     timeZone: "Asia/Shanghai",
   }).format(new Date());
-  return `liang-slider:vote-position:${date}`;
+  return `liang-slider:vote-position:v2:${date}`;
 }
 
 function getStoredVotePosition(): number | null {
   const value = Number(localStorage.getItem(getVoteStorageKey()));
-  return Number.isInteger(value) && value >= 0 && value <= 30 ? value : null;
+  return Number.isInteger(value) && value >= MIN_SCORE && value <= MAX_SCORE
+    ? value
+    : null;
 }
 
-const requestDraw = (level: number): void => {
-  renderer?.render(level);
+const requestDraw = (score: number): void => {
+  void renderer?.render(score).catch(() => {
+    controller?.setError("图像加载失败，请刷新重试");
+  });
 };
 
 controller = mountApp(app, requestDraw);
-renderer = createEvolutionVideoRenderer(controller.canvas);
-controller.setLoading(0, 1);
+renderer = createPortraitRenderer(controller.canvas);
 
 controller.onVote = async (position: number) => {
   if (!fingerprint || !controller) return;
@@ -49,20 +53,21 @@ controller.onVote = async (position: number) => {
       controller.setUserVotePosition(result.userPosition);
       controller.setCommunityScore({
         score: result.score,
-        level: result.level,
         stage: result.stage,
-        upCount: result.upCount,
-        downCount: result.downCount,
-        upVotePoints: result.upVotePoints,
-        downVotePoints: result.downVotePoints,
+        positiveCount: result.positiveCount,
+        negativeCount: result.negativeCount,
+        neutralCount: result.neutralCount,
+        positivePoints: result.positivePoints,
+        negativePoints: result.negativePoints,
         isColdStart: true,
         recentEvents: [],
       });
       controller.setVotingState({
-        upCount: result.upCount,
-        downCount: result.downCount,
-        upVotePoints: result.upVotePoints,
-        downVotePoints: result.downVotePoints,
+        positiveCount: result.positiveCount,
+        negativeCount: result.negativeCount,
+        neutralCount: result.neutralCount,
+        positivePoints: result.positivePoints,
+        negativePoints: result.negativePoints,
       });
     }
   } catch {
@@ -74,7 +79,7 @@ controller.onHistorySelect = async (date: string) => {
   if (!controller) return;
   try {
     const dayData = await fetchTimelineDay(date);
-    controller.enterHistoryMode(date, dayData.level);
+    controller.enterHistoryMode(date, dayData.score);
   } catch {
     // Timeline fetch failed silently
   }
@@ -95,34 +100,18 @@ async function initFingerprint(): Promise<void> {
 }
 
 async function loadInitialScore(): Promise<void> {
-  if (!controller) return;
+  if (!controller || !renderer) return;
+  const activeRenderer = renderer;
   try {
     const scoreData = await fetchScore();
     controller.setCommunityScore(scoreData);
     const savedPosition = getStoredVotePosition();
     controller.setUserVotePosition(savedPosition);
-    controller.setLevel(scoreData.level);
-    requestDraw(scoreData.level);
-
-    if (renderer) {
-      const videoReady = renderer.load();
-      await videoReady;
-      controller.setReady();
-      controller.setLevel(scoreData.level);
-      requestDraw(scoreData.level);
-    }
+    controller.setScore(scoreData.score);
+    await activeRenderer.render(scoreData.score);
+    controller.setReady();
   } catch {
-    if (renderer) {
-      renderer.load()
-        .then(() => {
-          controller?.setReady();
-          requestDraw(15);
-          controller?.setLevel(15);
-        })
-        .catch(() => {
-          controller?.setError("加载失败，请刷新重试");
-        });
-    }
+    controller.setError("加载失败，请刷新重试");
   }
 }
 

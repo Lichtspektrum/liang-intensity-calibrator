@@ -2,10 +2,6 @@ import {
   COLD_START_DAY_THRESHOLD,
   COLD_START_VOTER_THRESHOLD,
   DEFAULT_SCORE,
-  MAX_SCORE,
-  applyNewsDelta,
-  applyVote,
-  applyVoteChange,
   clampScore,
   createInitialScoreState,
   decayToNow,
@@ -15,7 +11,7 @@ import {
 } from "../score-engine";
 import { type Env, type ScoreResponse, jsonResponse, todayInBeijing } from "./shared";
 
-const CURRENT_SCORE_KEY = "score_state";
+const CURRENT_SCORE_KEY = "signed_score_state";
 
 export async function getScoreState(env: Env): Promise<ScoreState> {
   const now = Date.now();
@@ -36,42 +32,6 @@ export async function getScoreState(env: Env): Promise<ScoreState> {
     await env.KV.put(CURRENT_SCORE_KEY, JSON.stringify(decayed));
   }
   return decayed;
-}
-
-export async function applyVoteToScore(
-  env: Env,
-  direction: "up" | "down",
-): Promise<ScoreState> {
-  const now = Date.now();
-  const state = await getScoreState(env);
-  const decayed = decayToNow(state, now);
-  const newScore = applyVote(decayed.score, direction);
-  const newState: ScoreState = {
-    ...decayed,
-    score: newScore,
-    lastUpdateTs: now,
-    cumulativeVoters: decayed.cumulativeVoters + 1,
-  };
-  await env.KV.put(CURRENT_SCORE_KEY, JSON.stringify(newState));
-  return newState;
-}
-
-export async function applyVoteChangeToScore(
-  env: Env,
-  oldDirection: "up" | "down",
-  newDirection: "up" | "down",
-): Promise<ScoreState> {
-  const now = Date.now();
-  const state = await getScoreState(env);
-  const decayed = decayToNow(state, now);
-  const newScore = applyVoteChange(decayed.score, oldDirection, newDirection);
-  const newState: ScoreState = {
-    ...decayed,
-    score: newScore,
-    lastUpdateTs: now,
-  };
-  await env.KV.put(CURRENT_SCORE_KEY, JSON.stringify(newState));
-  return newState;
 }
 
 export async function applyVotePointsToScore(
@@ -107,12 +67,13 @@ export async function applyNewsDeltaToScore(env: Env, delta: number): Promise<Sc
 }
 
 export interface TodayVoteSummary {
-  upCount: number;
-  downCount: number;
+  positiveCount: number;
+  negativeCount: number;
+  neutralCount: number;
   uniqueVoters: number;
   totalVotePoints: number;
-  upVotePoints: number;
-  downVotePoints: number;
+  positivePoints: number;
+  negativePoints: number;
 }
 
 export async function getTodayVoteSummary(env: Env): Promise<TodayVoteSummary> {
@@ -120,37 +81,54 @@ export async function getTodayVoteSummary(env: Env): Promise<TodayVoteSummary> {
   const row = await env.DB
     .prepare(
       `SELECT
-        SUM(CASE WHEN direction = 'up' THEN 1 ELSE 0 END) as up,
-        SUM(CASE WHEN direction = 'down' THEN 1 ELSE 0 END) as down,
+        SUM(CASE WHEN position > 0 THEN 1 ELSE 0 END) as positive_count,
+        SUM(CASE WHEN position < 0 THEN 1 ELSE 0 END) as negative_count,
+        SUM(CASE WHEN position = 0 THEN 1 ELSE 0 END) as neutral_count,
         COUNT(DISTINCT fingerprint) as voters,
-        SUM(COALESCE(position, CASE WHEN direction = 'up' THEN 30 ELSE 0 END)) as vote_points,
-        SUM(CASE WHEN direction = 'up' THEN COALESCE(position, 30) ELSE 0 END) as up_vote_points,
-        SUM(CASE WHEN direction = 'down' THEN COALESCE(position, 0) ELSE 0 END) as down_vote_points
+        SUM(position) as vote_points,
+        SUM(CASE WHEN position > 0 THEN position ELSE 0 END) as positive_points,
+        SUM(CASE WHEN position < 0 THEN position ELSE 0 END) as negative_points
        FROM votes
        WHERE date = ?`,
     )
     .bind(today)
     .first<{
-      up: number | null;
-      down: number | null;
+      positive_count: number | null;
+      negative_count: number | null;
+      neutral_count: number | null;
       voters: number | null;
       vote_points: number | null;
-      up_vote_points: number | null;
-      down_vote_points: number | null;
+      positive_points: number | null;
+      negative_points: number | null;
     }>();
   return {
-    upCount: row?.up ?? 0,
-    downCount: row?.down ?? 0,
+    positiveCount: row?.positive_count ?? 0,
+    negativeCount: row?.negative_count ?? 0,
+    neutralCount: row?.neutral_count ?? 0,
     uniqueVoters: row?.voters ?? 0,
     totalVotePoints: row?.vote_points ?? 0,
-    upVotePoints: row?.up_vote_points ?? 0,
-    downVotePoints: row?.down_vote_points ?? 0,
+    positivePoints: row?.positive_points ?? 0,
+    negativePoints: row?.negative_points ?? 0,
   };
 }
 
-export async function getTodayVoteCounts(env: Env): Promise<Pick<TodayVoteSummary, "upCount" | "downCount" | "uniqueVoters" | "upVotePoints" | "downVotePoints">> {
-  const { upCount, downCount, uniqueVoters, upVotePoints, downVotePoints } = await getTodayVoteSummary(env);
-  return { upCount, downCount, uniqueVoters, upVotePoints, downVotePoints };
+export async function getTodayVoteCounts(env: Env): Promise<Omit<TodayVoteSummary, "totalVotePoints">> {
+  const {
+    positiveCount,
+    negativeCount,
+    neutralCount,
+    uniqueVoters,
+    positivePoints,
+    negativePoints,
+  } = await getTodayVoteSummary(env);
+  return {
+    positiveCount,
+    negativeCount,
+    neutralCount,
+    uniqueVoters,
+    positivePoints,
+    negativePoints,
+  };
 }
 
 export async function getRecentEvents(env: Env, limit = 15) {
@@ -169,9 +147,14 @@ export async function getRecentEvents(env: Env, limit = 15) {
 
 export async function handleGetScore(env: Env): Promise<Response> {
   const state = await getScoreState(env);
-  const level = Math.round(state.score * 100) / 100;
   const stage = scoreToStage(state.score);
-  const { upCount, downCount, upVotePoints, downVotePoints } = await getTodayVoteCounts(env);
+  const {
+    positiveCount,
+    negativeCount,
+    neutralCount,
+    positivePoints,
+    negativePoints,
+  } = await getTodayVoteCounts(env);
   const isColdStart =
     state.cumulativeVoters < COLD_START_VOTER_THRESHOLD &&
     state.daysSinceLaunch < COLD_START_DAY_THRESHOLD;
@@ -179,12 +162,12 @@ export async function handleGetScore(env: Env): Promise<Response> {
 
   const response: ScoreResponse = {
     score: Math.round(state.score * 100) / 100,
-    level,
     stage,
-    upCount,
-    downCount,
-    upVotePoints,
-    downVotePoints,
+    positiveCount,
+    negativeCount,
+    neutralCount,
+    positivePoints,
+    negativePoints,
     isColdStart,
     recentEvents,
   };

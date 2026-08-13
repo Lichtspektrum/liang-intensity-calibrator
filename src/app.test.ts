@@ -12,12 +12,12 @@ describe("liang slider app", () => {
     root = document.querySelector<HTMLElement>("#app")!;
   });
 
-  it("渲染 0 到 30 的整数投票滑杆和 31 个刻度", () => {
+  it("渲染 -15 到 15 的整数投票滑杆和 31 个刻度", () => {
     mountApp(root);
 
     const slider = root.querySelector<HTMLInputElement>("#strength-slider")!;
-    expect(slider.min).toBe("0");
-    expect(slider.max).toBe("30");
+    expect(slider.min).toBe("-15");
+    expect(slider.max).toBe("15");
     expect(slider.step).toBe("1");
     expect(root.querySelectorAll(".tick")).toHaveLength(31);
   });
@@ -26,33 +26,35 @@ describe("liang slider app", () => {
     const positions: number[] = [];
     const controller = mountApp(root, (position) => positions.push(position));
 
-    controller.setLevel(12.35);
+    controller.setScore(3.35);
 
     const slider = root.querySelector<HTMLInputElement>("#strength-slider")!;
-    expect(slider.value).toBe("12.35");
-    expect(controller.level).toBe(12.35);
-    expect(positions.at(-1)).toBe(12.35);
-    expect(root.querySelector(".stage-name")?.textContent).toBe("梁子");
-    expect(root.querySelector(".level-output")?.textContent).toBe("12 / 30");
+    expect(slider.value).toBe("3.35");
+    expect(controller.score).toBe(3.35);
+    expect(positions.at(-1)).toBe(3.35);
+    expect(root.querySelector(".stage-name")?.textContent).toBe("梁圣");
+    expect(root.querySelector(".level-output")?.textContent).toBe("+03");
   });
 
-  it("初始状态显示小难梁", () => {
+  it("初始状态显示中立梁子", () => {
     mountApp(root);
 
-    expect(root.querySelector(".stage-name")?.textContent).toBe("小难梁");
-    expect(root.querySelector(".level-output")?.textContent).toBe("00 / 30");
+    expect(root.querySelector(".stage-name")?.textContent).toBe("梁子");
+    expect(root.querySelector(".level-output")?.textContent).toBe("00");
     expect(root.querySelector(".load-state")?.textContent).toBe("载入连续祖力…");
   });
 
-  it("拖到 24 级后同步更新梁神文字和无障碍读数", () => {
+  it("拖到 +9 后同步更新梁神文字和无障碍读数", () => {
     mountApp(root);
 
     const slider = root.querySelector<HTMLInputElement>("#strength-slider")!;
-    slider.value = "24";
+    slider.value = "9";
     slider.dispatchEvent(new Event("input", { bubbles: true }));
 
     expect(root.querySelector(".stage-name")?.textContent).toBe("梁神");
-    expect(slider.getAttribute("aria-valuetext")).toBe("梁神，24 级，共 30 级");
+    expect(slider.getAttribute("aria-valuetext")).toBe(
+      "梁神，强度 +09，范围 -15 到 +15",
+    );
   });
 
   it("滑动结束后以当前位置提交投票，并保留端点计数", () => {
@@ -61,18 +63,19 @@ describe("liang slider app", () => {
     controller.onVote = (position) => positions.push(position);
 
     const slider = root.querySelector<HTMLInputElement>("#strength-slider")!;
-    slider.value = "24";
+    slider.value = "9";
     slider.dispatchEvent(new Event("input", { bubbles: true }));
     slider.dispatchEvent(new Event("change", { bubbles: true }));
     controller.setVotingState({
-      upCount: 1_100,
-      downCount: 8,
-      upVotePoints: 33_000,
-      downVotePoints: 40,
+      positiveCount: 1_100,
+      negativeCount: 8,
+      neutralCount: 2,
+      positivePoints: 33_000,
+      negativePoints: -40,
     });
 
-    expect(positions).toEqual([24]);
-    expect(slider.value).toBe("24");
+    expect(positions).toEqual([9]);
+    expect(slider.value).toBe("9");
     expect(root.querySelector(".vote-total--up number-flow")?.getAttribute("value")).toBe("33000");
     expect(root.querySelector(".vote-total--down number-flow")?.getAttribute("value")).toBe("40");
     expect(root.querySelector(".vote-btn")).toBeNull();
@@ -82,23 +85,23 @@ describe("liang slider app", () => {
     const controller = mountApp(root);
 
     controller.setCommunityScore({
-      score: 22.5,
-      level: 22.5,
+      score: 7.5,
       stage: "梁圣",
-      upCount: 2,
-      downCount: 0,
-      upVotePoints: 45,
-      downVotePoints: 0,
+      positiveCount: 2,
+      negativeCount: 0,
+      neutralCount: 0,
+      positivePoints: 15,
+      negativePoints: 0,
       isColdStart: true,
       recentEvents: [],
     });
-    controller.setUserVotePosition(30);
+    controller.setUserVotePosition(15);
 
     const slider = root.querySelector<HTMLInputElement>("#strength-slider")!;
     const ghostThumb = root.querySelector<HTMLElement>(".community-ghost-thumb")!;
     const status = root.querySelector<HTMLElement>(".vote-status")!;
 
-    expect(slider.value).toBe("30");
+    expect(slider.value).toBe("15");
     expect(root.querySelector(".stage-name")?.textContent).toBe("梁圣");
     expect(status.textContent).toContain("你已投票");
     expect(status.textContent).toContain("阴影圆点是社区结果");

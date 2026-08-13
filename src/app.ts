@@ -1,48 +1,61 @@
 import NumberFlow from "number-flow";
 
-import { clampPosition, getProgression, MAX_LEVEL, STAGES } from "./progression";
 import type { ScoreData, TimelineEventData } from "./api";
+import {
+  MAX_SCORE,
+  MIN_SCORE,
+  SCORE_COUNT,
+  SCORES_PER_STAGE,
+  STAGES,
+  clampScore,
+  describeScore,
+  formatSignedScore,
+} from "./score-domain";
 
 export interface AppController {
   readonly canvas: HTMLCanvasElement;
   readonly slider: HTMLInputElement;
-  readonly level: number;
-  setLevel(level: number): void;
-  setDisplayLevel(level: number): void;
+  readonly score: number;
+  setScore(score: number): void;
+  setDisplayScore(score: number): void;
   setLoading(loaded: number, total: number): void;
   setReady(): void;
   setError(message: string): void;
   setCommunityScore(score: ScoreData): void;
   setUserVotePosition(position: number | null): void;
   setVotingState(state: {
-    upCount: number;
-    downCount: number;
-    upVotePoints: number;
-    downVotePoints: number;
+    positiveCount: number;
+    negativeCount: number;
+    neutralCount: number;
+    positivePoints: number;
+    negativePoints: number;
   }): void;
   setTimelineEvents(events: TimelineEventData[]): void;
-  enterHistoryMode(date: string, level: number): void;
+  enterHistoryMode(date: string, score: number): void;
   exitHistoryMode(): void;
   onVote?: (position: number) => void;
   onHistorySelect?: (date: string) => void;
   onHistoryExit?: () => void;
 }
 
-export type LevelChangeHandler = (level: number) => void;
+export type ScoreChangeHandler = (score: number) => void;
 export type VoteHandler = (position: number) => void;
 export type HistorySelectHandler = (date: string) => void;
 
 function createTicks(): string {
   return Array.from(
-    { length: MAX_LEVEL + 1 },
-    (_, level) => `<i class="tick" data-level="${level}" aria-hidden="true"></i>`,
+    { length: SCORE_COUNT },
+    (_, index) => {
+      const score = MIN_SCORE + index;
+      return `<i class="tick" data-score="${score}" aria-hidden="true"></i>`;
+    },
   ).join("");
 }
 
 function createStageMarkers(): string {
   return STAGES.map(
     (stage, index) =>
-      `<li class="stage-marker" data-level="${index * 6}" style="--marker-index: ${index}">${stage}</li>`,
+      `<li class="stage-marker" data-score="${MIN_SCORE + index * SCORES_PER_STAGE}" style="--marker-index: ${index}">${stage}</li>`,
   ).join("");
 }
 
@@ -72,7 +85,7 @@ export function formatVoteCount(count: number): string {
 
 export function mountApp(
   root: HTMLElement,
-  onLevelChange: LevelChangeHandler = () => undefined,
+  onScoreChange: ScoreChangeHandler = () => undefined,
 ): AppController {
   root.innerHTML = `
     <div class="experience" data-stage="0">
@@ -84,7 +97,7 @@ export function mountApp(
           </div>
           <div class="level-meter" aria-live="polite">
             <span>梁系强度</span>
-            <output class="level-output" for="strength-slider">-- / 30</output>
+            <output class="level-output" for="strength-slider">--</output>
           </div>
         </header>
 
@@ -122,12 +135,12 @@ export function mountApp(
                   id="strength-slider"
                   class="strength-slider"
                   type="range"
-                  min="0"
-                  max="30"
+                  min="-15"
+                  max="15"
                   step="1"
                   value="0"
                   aria-label="梁系强度"
-                  aria-valuetext="小难梁，0 级，共 30 级"
+                  aria-valuetext="梁子，强度 00，范围 -15 到 +15"
                   disabled
                 />
               </div>
@@ -137,7 +150,7 @@ export function mountApp(
               <number-flow class="vote-total-flow" value="0"></number-flow>
             </output>
           </div>
-          <p class="drag-hint"><span aria-hidden="true">←</span> 0 为最低、30 为最高；当天再次滑动会修改你的投票 <span aria-hidden="true">→</span></p>
+          <p class="drag-hint"><span aria-hidden="true">←</span> -15 为最低，0 为中立，+15 为最高；当天再次滑动会修改你的投票 <span aria-hidden="true">→</span></p>
         </section>
 
         <footer class="footer-note">
@@ -184,23 +197,23 @@ export function mountApp(
     element.textContent = formatVoteCount(value);
   };
 
-  const updateVisuals = (position: number) => {
-    const state = getProgression(position);
+  const updateVisuals = (score: number) => {
+    const state = describeScore(score);
     slider.setAttribute(
       "aria-valuetext",
-      `${state.stage}，${state.level} 级，共 ${MAX_LEVEL} 级`,
+      `${state.stage}，强度 ${formatSignedScore(state.displayScore)}，范围 -15 到 +15`,
     );
-    output.textContent = `${String(state.level).padStart(2, "0")} / ${MAX_LEVEL}`;
+    output.textContent = formatSignedScore(state.displayScore);
     stageName.textContent = state.stage;
     stageGhost.textContent = state.stage;
     stageIndex.textContent = `阶段 ${String(state.stageIndex + 1).padStart(2, "0")} / 06`;
     canvas.setAttribute("aria-label", `当前形态：${state.stage}`);
     experience.dataset.stage = String(state.stageIndex);
-    experience.style.setProperty("--strength", String(position / MAX_LEVEL));
-    experience.style.setProperty("--stage-progress", String(state.localProgress));
+    experience.style.setProperty("--strength", String(state.trackProgress));
+    experience.style.setProperty("--stage-progress", String(state.stageProgress));
 
     ticks.forEach((tick, index) => {
-      tick.classList.toggle("is-active", index <= state.level);
+      tick.classList.toggle("is-active", index <= state.frameIndex);
     });
     markers.forEach((marker, index) => {
       marker.classList.toggle("is-current", index === state.stageIndex);
@@ -208,22 +221,22 @@ export function mountApp(
     });
   };
 
-  const setDisplayLevel = (rawLevel: number): void => {
-    const position = clampPosition(rawLevel);
+  const setDisplayScore = (rawScore: number): void => {
+    const position = clampScore(rawScore);
     displayPosition = position;
     updateVisuals(position);
-    onLevelChange(position);
+    onScoreChange(position);
   };
 
-  const setUserSliderPosition = (rawLevel: number): void => {
-    const position = clampPosition(rawLevel);
+  const setUserSliderPosition = (rawScore: number): void => {
+    const position = clampScore(rawScore);
     currentPosition = position;
     slider.value = String(position);
   };
 
-  const setLevel = (rawLevel: number): void => {
-    setDisplayLevel(rawLevel);
-    setUserSliderPosition(rawLevel);
+  const setScore = (rawScore: number): void => {
+    setDisplayScore(rawScore);
+    setUserSliderPosition(rawScore);
   };
 
   slider.addEventListener("input", () => {
@@ -231,7 +244,7 @@ export function mountApp(
     currentMode = "previewing-vote";
     const position = Number(slider.value);
     setUserSliderPosition(position);
-    setDisplayLevel(position);
+    setDisplayScore(position);
   });
 
   slider.addEventListener("change", () => {
@@ -247,16 +260,16 @@ export function mountApp(
     controller.onHistoryExit?.();
   });
 
-  setLevel(0);
+  setScore(0);
 
   const controller: AppController = {
     canvas,
     slider,
-    get level() {
+    get score() {
       return displayPosition;
     },
-    setLevel,
-    setDisplayLevel,
+    setScore,
+    setDisplayScore,
     setLoading(loaded, total) {
       loadState.textContent = loaded >= total ? "连续祖力已就绪" : "载入连续祖力…";
     },
@@ -271,41 +284,43 @@ export function mountApp(
       loadState.textContent = message;
     },
     setCommunityScore(scoreData) {
-      communityLevel = scoreData.level;
+      communityLevel = scoreData.score;
+      const communityState = describeScore(communityLevel);
       communityGhostThumb.style.setProperty(
         "--community-position",
-        String((communityLevel / MAX_LEVEL) * 100),
+        String(communityState.trackProgress * 100),
       );
       communityGhostThumb.setAttribute("aria-label", `社区当前分值 ${communityLevel.toFixed(2)}`);
       if (currentMode === "idle") {
-        setDisplayLevel(communityLevel);
+        setDisplayScore(communityLevel);
       }
       controller.setVotingState({
-        upCount: scoreData.upCount,
-        downCount: scoreData.downCount,
-        upVotePoints: scoreData.upVotePoints,
-        downVotePoints: scoreData.downVotePoints,
+        positiveCount: scoreData.positiveCount,
+        negativeCount: scoreData.negativeCount,
+        neutralCount: scoreData.neutralCount,
+        positivePoints: scoreData.positivePoints,
+        negativePoints: scoreData.negativePoints,
       });
       controller.setTimelineEvents(scoreData.recentEvents);
     },
     setUserVotePosition(position) {
-      userVotePosition = position === null ? null : clampPosition(position);
+      userVotePosition = position === null ? null : clampScore(position);
       if (userVotePosition === null) {
         setUserSliderPosition(communityLevel);
         voteStatus.textContent = "主滑块表示你的投票，阴影圆点表示社区结果";
         return;
       }
-      voteStatus.textContent = `你已投票：${Math.round(userVotePosition)} / 30；阴影圆点是社区结果`;
+      voteStatus.textContent = `你已投票：${formatSignedScore(userVotePosition)}；阴影圆点是社区结果`;
       setUserSliderPosition(userVotePosition);
       if (currentMode === "idle") {
-        setDisplayLevel(communityLevel);
+        setDisplayScore(communityLevel);
       }
     },
     setVotingState(state) {
-      updateVotePoints(voteCountUp, state.upVotePoints);
-      updateVotePoints(voteCountDown, state.downVotePoints);
-      voteCountUp.setAttribute("aria-label", `高强度累计票值 ${state.upVotePoints}`);
-      voteCountDown.setAttribute("aria-label", `低强度累计票值 ${state.downVotePoints}`);
+      updateVotePoints(voteCountUp, state.positivePoints);
+      updateVotePoints(voteCountDown, Math.abs(state.negativePoints));
+      voteCountUp.setAttribute("aria-label", `正向累计票值 ${state.positivePoints}`);
+      voteCountDown.setAttribute("aria-label", `负向累计票值 ${state.negativePoints}`);
     },
     setTimelineEvents(events) {
       const maxImpact = 1;
@@ -325,9 +340,9 @@ export function mountApp(
         });
       });
     },
-    enterHistoryMode(date, level) {
+    enterHistoryMode(date, score) {
       currentMode = "viewing-history";
-      setDisplayLevel(level);
+      setDisplayScore(score);
       slider.disabled = true;
       timelineReturnBtn.hidden = false;
       experience.classList.add("is-history-mode");
@@ -339,7 +354,7 @@ export function mountApp(
       timelineReturnBtn.hidden = true;
       experience.classList.remove("is-history-mode");
       timelineHeader.textContent = "时间线";
-      setDisplayLevel(communityLevel);
+      setDisplayScore(communityLevel);
     },
   };
 

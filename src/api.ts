@@ -1,11 +1,11 @@
 export interface ScoreData {
   score: number;
-  level: number;
   stage: string;
-  upCount: number;
-  downCount: number;
-  upVotePoints: number;
-  downVotePoints: number;
+  positiveCount: number;
+  negativeCount: number;
+  neutralCount: number;
+  positivePoints: number;
+  negativePoints: number;
   isColdStart: boolean;
   recentEvents: TimelineEventData[];
 }
@@ -23,21 +23,21 @@ export interface VoteResult {
   reason?: string;
   userPosition: number;
   score: number;
-  level: number;
   stage: string;
-  upCount: number;
-  downCount: number;
-  upVotePoints: number;
-  downVotePoints: number;
+  positiveCount: number;
+  negativeCount: number;
+  neutralCount: number;
+  positivePoints: number;
+  negativePoints: number;
 }
 
 export interface TimelineDayData {
   date: string;
   score: number;
-  level: number;
   stage: string;
-  upCount: number;
-  downCount: number;
+  positiveCount: number;
+  negativeCount: number;
+  neutralCount: number;
   events: TimelineEventData[];
 }
 

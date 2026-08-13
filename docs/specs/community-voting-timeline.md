@@ -6,10 +6,10 @@
 
 当前实现的核心能力：
 
-- 滑杆语义区间为 `0-30`，默认社区分值为 `15`。
+- 滑杆语义区间为 `-15..15`，默认社区分值为 `0`。
 - 页面加载后从 `/api/score` 获取社区共识分值、阶段、当天投票统计和最近新闻事件。
-- 用户通过主滑块提交当天投票位置，投票值必须是 `0-30` 的整数；当天再次滑动会更新自己的投票。
-- 后端按 `position >= 15` 归为 `up`，`position < 15` 归为 `down`，并保留原始 `position` 用于计算平均分。
+- 用户通过主滑块提交当天投票位置，投票值必须是 `-15..15` 的整数；当天再次滑动会更新自己的投票。
+- 后端按 `position > 0`、`position = 0`、`position < 0` 派生正向、中立和负向统计；`position` 是唯一投票事实。
 - 时间线数据来自 D1 中的 `score_snapshots` 和 `news_events`。
 - Cron 每小时记录当天快照并采集相关新闻。
 
@@ -17,7 +17,7 @@
 
 1. 作为首次访问的用户，我打开页面时看到滑杆定位在当前社区共识分值，而不是固定从 0 开始。
 2. 作为用户，我可以自由拖动滑杆浏览从「小难梁」到「梁祖」的所有形态。
-3. 作为用户，我通过主滑块选择 `0-30` 的整数位置来提交当天投票。
+3. 作为用户，我通过主滑块选择 `-15..15` 的整数位置来提交当天投票。
 4. 作为用户，我当天再次滑动并提交时，可以修改自己的投票位置。
 5. 作为用户，我能看到低强度和高强度两侧累计票值，从而感知当前社区倾向。
 6. 作为用户，我点击时间线事件后，可以回看该日期的历史分值和对应形态。
@@ -42,16 +42,16 @@
 ### 路由与 API
 
 1. **`GET /api/score`**
-   - 返回当前 `score`、`level`、`stage`、当天 `upCount/downCount`、当天 `upVotePoints/downVotePoints`、`isColdStart` 和最近 15 个事件。
-   - `score` 和 `level` 都是 `0-30` 区间，保留两位小数。
+   - 返回当前 `score`、`stage`、当天正向/负向/中立统计、`isColdStart` 和最近 15 个事件。
+   - `score` 是 `-15..15` 区间，保留两位小数；接口不再返回重复的 `level`。
    - 响应头为 `Cache-Control: no-store`。
 
 2. **`POST /api/vote`**
    - 请求体：`{ fingerprint: string, position: number }`。
-   - `position` 必须是 `0-30` 的整数。
+   - `position` 必须是 `-15..15` 的整数。
    - 服务端检查同源 `Origin` 或 `Referer`，并从 `CF-Connecting-IP` 获取 IP 做新增投票者限流。
    - 同一 `fingerprint + date` 使用 upsert；当天重复提交会覆盖旧 `position`。
-   - 返回 `accepted`、`userPosition`、最新 `score/level/stage` 和当天投票统计。
+   - 返回 `accepted`、`userPosition`、最新 `score/stage` 和当天投票统计。
    - 主要错误：`invalid_body`、`invalid_position`、`invalid_fingerprint`、`csrf`、`rate_limited`。
 
 3. **`GET /api/timeline?from=YYYY-MM-DD&to=YYYY-MM-DD`**
@@ -69,12 +69,12 @@
 
 ### 分值算法
 
-当前实现不再使用 `0-100 -> 0-30` 的映射。`score` 本身就是 UI 使用的 `0-30` 梁氏浓度。
+`score` 本身就是 UI、API、KV 和 D1 使用的 `-15..15` 梁氏浓度。`0..30` 只存在于图片文件编号中，映射公式为 `frameIndex = round(score) + 15`。
 
 ```ts
-MIN_SCORE = 0
-MAX_SCORE = 30
-DEFAULT_SCORE = 15
+MIN_SCORE = -15
+MAX_SCORE = 15
+DEFAULT_SCORE = 0
 HALF_LIFE_DAYS = 30
 COLD_START_VOTER_THRESHOLD = 500
 COLD_START_DAY_THRESHOLD = 7
@@ -84,17 +84,16 @@ IP_DAILY_VOTE_LIMIT = 5
 
 规则：
 
-- 当前分值存储在 KV 的 `score_state`。
-- 读取分值时按月半衰期向默认值 15 衰减：`15 + (score - 15) * exp(-ln(2) * ageDays / 30)`。
+- 当前分值存储在 KV 的 `signed_score_state`。
+- 读取分值时按月半衰期向默认值 0 衰减：`score * exp(-ln(2) * ageDays / 30)`。
 - 投票提交后，分值由当天所有独立投票者的平均 `position` 计算：`score = totalVotePoints / uniqueVoters`。
-- 没有投票点数时，默认分值为 `15`。
-- 新闻冷启动增量直接加到当前分值并 clamp 到 `0-30`。
-- `level` 等于四舍五入到两位小数的 `score`。
-- 阶段按每 6 级划分：`0-5 小难梁`、`6-11 牢梁`、`12-17 梁子`、`18-23 梁圣`、`24-29 梁神`、`30 梁祖`。
+- 没有投票者时，默认分值为 `0`。
+- 新闻冷启动增量直接加到当前分值并 clamp 到 `-15..15`。
+- 阶段和图片共同使用四舍五入后的分值：`-15..-10 小难梁`、`-9..-4 牢梁`、`-3..2 梁子`、`3..8 梁圣`、`9..14 梁神`、`15 梁祖`。
 
 ### D1 Schema
 
-当前 migrations：`0001_init.sql` + `0002_add_vote_position.sql`。
+当前 migrations：`0001_init.sql`、`0002_add_vote_position.sql`、`0003_signed_score.sql`。`0003` 是不兼容迁移，会删除并重建 `votes` 与 `score_snapshots`，不转换旧坐标数据。
 
 ```sql
 CREATE TABLE IF NOT EXISTS daily_votes (
@@ -106,14 +105,13 @@ CREATE TABLE IF NOT EXISTS daily_votes (
   final_score REAL
 );
 
-CREATE TABLE IF NOT EXISTS votes (
+CREATE TABLE votes (
   fingerprint TEXT NOT NULL,
   ip_hash TEXT NOT NULL,
   date TEXT NOT NULL,
-  direction TEXT NOT NULL CHECK(direction IN ('up', 'down')),
+  position INTEGER NOT NULL CHECK(position BETWEEN -15 AND 15),
   created_at INTEGER NOT NULL,
   updated_at INTEGER NOT NULL,
-  position REAL,
   PRIMARY KEY (fingerprint, date)
 );
 CREATE INDEX IF NOT EXISTS idx_votes_ip_date ON votes(ip_hash, date);
@@ -133,13 +131,13 @@ CREATE TABLE IF NOT EXISTS news_events (
 );
 CREATE INDEX IF NOT EXISTS idx_events_date ON news_events(date);
 
-CREATE TABLE IF NOT EXISTS score_snapshots (
+CREATE TABLE score_snapshots (
   date TEXT PRIMARY KEY,
-  score REAL NOT NULL,
-  level REAL NOT NULL,
+  score REAL NOT NULL CHECK(score BETWEEN -15 AND 15),
   stage TEXT NOT NULL,
-  up_count INTEGER NOT NULL,
-  down_count INTEGER NOT NULL,
+  positive_count INTEGER NOT NULL,
+  negative_count INTEGER NOT NULL,
+  neutral_count INTEGER NOT NULL,
   major_event_id INTEGER,
   FOREIGN KEY (major_event_id) REFERENCES news_events(id)
 );
@@ -152,7 +150,7 @@ CREATE TABLE IF NOT EXISTS app_state (
 
 ### KV 用途
 
-- `score_state`：当前分值状态，包含 `score`、`lastUpdateTs`、`cumulativeVoters`、`daysSinceLaunch`。
+- `signed_score_state`：当前分值状态，包含 `score`、`lastUpdateTs`、`cumulativeVoters`、`daysSinceLaunch`。
 - `vote:ip:<date>:<ip_hash>`：同一 IP 当天新增投票者计数，TTL 48 小时。
 - `news:url:<hash>`：已处理新闻 URL 标记，TTL 7 天。
 
@@ -179,8 +177,9 @@ CREATE TABLE IF NOT EXISTS app_state (
 
 当前测试覆盖：
 
-- `src/score-engine.test.ts`：0-30 clamp、投票位置归一化、分值衰减、新闻增量、阶段映射。
-- `src/app.test.ts`：0-30 投票滑杆、社区分值、票值展示、历史模式等 DOM 行为。
+- `src/score-domain.test.ts`：`-15..15` clamp、阶段、图片编号、轨道百分比和有符号格式。
+- `src/score-engine.test.ts`：投票平均值、分值衰减、新闻增量和阶段映射。
+- `src/app.test.ts`：`-15..15` 投票滑杆、社区分值、票值展示、历史模式等 DOM 行为。
 - `src/api` 相关测试：Worker Assets 和 API 行为。
 - `tests/slider.spec.ts`：浏览器交互。
 
@@ -205,4 +204,4 @@ npm run build
 - “每天一票”和快照日期按北京时间计算。
 - 投票身份使用 fingerprintjs，服务端以 `fingerprint + date` 作为每日投票唯一键。
 - IP hash 使用 `liang-slider-ip:<ip>` 作为 SHA-256 输入；当前 salt 是代码常量，不是独立 secret。
-- `daily_votes` 目前存在于 schema 中，但当前分值读取和投票更新主要依赖 `votes` 聚合与 KV `score_state`。
+- `daily_votes` 目前存在于 schema 中，但当前分值读取和投票更新主要依赖 `votes` 聚合与 KV `signed_score_state`。

@@ -1,4 +1,4 @@
-import { clampPosition } from "./progression";
+import { clampScore } from "./score-domain";
 
 export type CommunityMode = "idle" | "browsing" | "snapping-back" | "viewing-history";
 
@@ -57,7 +57,7 @@ export function exitHistoryMode(state: CommunityState): CommunityState {
 }
 
 export function updateCommunityScore(state: CommunityState, newScore: number): CommunityState {
-  const clamped = clampPosition(newScore);
+  const clamped = clampScore(newScore);
   if (state.mode === "viewing-history") {
     return { ...state, communityScore: clamped };
   }
@@ -69,7 +69,7 @@ export function updateCommunityScore(state: CommunityState, newScore: number): C
 
 export function setBrowsingPosition(state: CommunityState, position: number): CommunityState {
   if (state.mode !== "browsing") return state;
-  return { ...state, currentPosition: clampPosition(position) };
+  return { ...state, currentPosition: clampScore(position) };
 }
 
 export function getTargetPosition(state: CommunityState): number {

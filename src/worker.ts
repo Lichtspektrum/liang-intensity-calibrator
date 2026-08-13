@@ -23,7 +23,7 @@ async function resetLocalVoteData(env: Env): Promise<void> {
     env.DB.prepare("DELETE FROM daily_votes"),
     env.DB.prepare("DELETE FROM score_snapshots"),
   ]);
-  await env.KV.delete("score_state");
+  await env.KV.delete("signed_score_state");
   await deleteKvKeysWithPrefix(env, "vote:ip:");
 }
 

@@ -7,12 +7,12 @@ export interface Env {
 
 export interface ScoreResponse {
   score: number;
-  level: number;
   stage: string;
-  upCount: number;
-  downCount: number;
-  upVotePoints: number;
-  downVotePoints: number;
+  positiveCount: number;
+  negativeCount: number;
+  neutralCount: number;
+  positivePoints: number;
+  negativePoints: number;
   isColdStart: boolean;
   recentEvents: TimelineEventResponse[];
 }
@@ -28,10 +28,10 @@ export interface TimelineEventResponse {
 export interface TimelineDayResponse {
   date: string;
   score: number;
-  level: number;
   stage: string;
-  upCount: number;
-  downCount: number;
+  positiveCount: number;
+  negativeCount: number;
+  neutralCount: number;
   events: TimelineEventResponse[];
 }
 
@@ -45,20 +45,12 @@ export interface VoteResponse {
   reason?: "rate_limited" | "invalid_position" | "invalid_fingerprint";
   userPosition: number;
   score: number;
-  level: number;
   stage: string;
-  upCount: number;
-  downCount: number;
-  upVotePoints: number;
-  downVotePoints: number;
-}
-
-export const STAGES = ["小难梁", "牢梁", "梁子", "梁圣", "梁神", "梁祖"] as const;
-export const MAX_LEVEL = 30;
-
-export function getStage(level: number): string {
-  const stageIndex = Math.min(STAGES.length - 1, Math.floor(level / 6));
-  return STAGES[stageIndex];
+  positiveCount: number;
+  negativeCount: number;
+  neutralCount: number;
+  positivePoints: number;
+  negativePoints: number;
 }
 
 export function todayInBeijing(): string {

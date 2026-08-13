@@ -1,9 +1,9 @@
-import { IP_DAILY_VOTE_LIMIT, clampScore, normalizeVotePosition } from "../score-engine";
+import { IP_DAILY_VOTE_LIMIT, normalizeVotePosition, scoreToStage } from "../score-engine";
+import { MAX_SCORE, MIN_SCORE } from "../score-domain";
 import {
   type Env,
   type VoteRequest,
   type VoteResponse,
-  getStage,
   hashIp,
   jsonResponse,
   todayInBeijing,
@@ -16,7 +16,10 @@ import {
 } from "./score";
 
 function isValidPosition(position: unknown): position is number {
-  return typeof position === "number" && Number.isInteger(position) && position >= 0 && position <= 30;
+  return typeof position === "number"
+    && Number.isInteger(position)
+    && position >= MIN_SCORE
+    && position <= MAX_SCORE;
 }
 
 function isValidFingerprint(f: unknown): f is string {
@@ -61,14 +64,13 @@ async function recordVote(
   today: string,
 ): Promise<void> {
   const now = Date.now();
-  const direction = position >= 15 ? "up" : "down";
   await env.DB
     .prepare(
-      `INSERT INTO votes (fingerprint, ip_hash, date, direction, position, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?)
-       ON CONFLICT(fingerprint, date) DO UPDATE SET direction = ?, position = ?, updated_at = ?`,
+      `INSERT INTO votes (fingerprint, ip_hash, date, position, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?)
+       ON CONFLICT(fingerprint, date) DO UPDATE SET position = ?, updated_at = ?`,
     )
-    .bind(fingerprint, ipHash, today, direction, position, now, now, direction, position, now)
+    .bind(fingerprint, ipHash, today, position, now, now, position, now)
     .run();
 }
 
@@ -110,14 +112,15 @@ export async function handlePostVote(request: Request, env: Env): Promise<Respon
     return jsonResponse({
       accepted: false,
       reason: "rate_limited",
-      userPosition: (await getExistingVote(env, body.fingerprint, today)) ?? clampScore(state.score),
+      userPosition: (await getExistingVote(env, body.fingerprint, today))
+        ?? normalizeVotePosition(state.score),
       score: Math.round(state.score * 100) / 100,
-      level: Math.round(state.score * 100) / 100,
-      stage: getStage(state.score),
-      upCount: agg.upCount,
-      downCount: agg.downCount,
-      upVotePoints: agg.upVotePoints,
-      downVotePoints: agg.downVotePoints,
+      stage: scoreToStage(state.score),
+      positiveCount: agg.positiveCount,
+      negativeCount: agg.negativeCount,
+      neutralCount: agg.neutralCount,
+      positivePoints: agg.positivePoints,
+      negativePoints: agg.negativePoints,
     } satisfies VoteResponse, { status: 429 });
   }
 
@@ -137,17 +140,15 @@ export async function handlePostVote(request: Request, env: Env): Promise<Respon
   }
 
   const agg = summary;
-  const level = Math.round(newState.score * 100) / 100;
-
   return jsonResponse({
     accepted: true,
     userPosition: position,
     score: Math.round(newState.score * 100) / 100,
-    level,
-    stage: getStage(newState.score),
-    upCount: agg.upCount,
-    downCount: agg.downCount,
-    upVotePoints: agg.upVotePoints,
-    downVotePoints: agg.downVotePoints,
+    stage: scoreToStage(newState.score),
+    positiveCount: agg.positiveCount,
+    negativeCount: agg.negativeCount,
+    neutralCount: agg.neutralCount,
+    positivePoints: agg.positivePoints,
+    negativePoints: agg.negativePoints,
   } satisfies VoteResponse);
 }

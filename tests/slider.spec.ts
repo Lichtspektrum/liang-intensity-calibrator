@@ -1,23 +1,39 @@
 import { expect, test } from "@playwright/test";
 
 const milestones = [
-  [0, "小难梁"],
-  [6, "牢梁"],
-  [12, "梁子"],
-  [18, "梁圣"],
-  [24, "梁神"],
-  [30, "梁祖"],
+  [-15, "小难梁"],
+  [-9, "牢梁"],
+  [-3, "梁子"],
+  [3, "梁圣"],
+  [9, "梁神"],
+  [15, "梁祖"],
 ] as const;
 
-async function setSliderLevel(page: import("@playwright/test").Page, level: number) {
+async function setSliderScore(page: import("@playwright/test").Page, score: number) {
   await page.locator("#strength-slider").evaluate((element, value) => {
     const slider = element as HTMLInputElement;
     slider.value = String(value);
     slider.dispatchEvent(new Event("input", { bubbles: true }));
-  }, level);
+  }, score);
 }
 
 test.beforeEach(async ({ page }) => {
+  await page.route("**/api/score", (route) =>
+    route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        score: 0,
+        stage: "梁子",
+        positiveCount: 0,
+        negativeCount: 0,
+        neutralCount: 0,
+        positivePoints: 0,
+        negativePoints: 0,
+        isColdStart: true,
+        recentEvents: [],
+      }),
+    }),
+  );
   await page.goto("/");
   await expect(page.locator("#strength-slider")).toBeEnabled();
 });
@@ -25,9 +41,9 @@ test.beforeEach(async ({ page }) => {
 test("页面包含完整的 31 级控制与六个命名节点", async ({ page }) => {
   const slider = page.locator("#strength-slider");
 
-  await expect(slider).toHaveAttribute("min", "0");
-  await expect(slider).toHaveAttribute("max", "30");
-  await expect(slider).toHaveAttribute("step", "0.01");
+  await expect(slider).toHaveAttribute("min", "-15");
+  await expect(slider).toHaveAttribute("max", "15");
+  await expect(slider).toHaveAttribute("step", "1");
   await expect(page.locator(".tick")).toHaveCount(31);
   await expect(page.locator(".stage-marker")).toHaveText([
     "小难梁",
@@ -39,12 +55,12 @@ test("页面包含完整的 31 级控制与六个命名节点", async ({ page })
   ]);
 });
 
-test("六个里程碑同步更新文字、等级与 Canvas 描述", async ({ page }) => {
-  for (const [level, stage] of milestones) {
-    await setSliderLevel(page, level);
+test("六个里程碑同步更新文字、分值与 Canvas 描述", async ({ page }) => {
+  for (const [score, stage] of milestones) {
+    await setSliderScore(page, score);
     await expect(page.locator(".stage-name")).toHaveText(stage);
     await expect(page.locator(".level-output")).toHaveText(
-      `${String(level).padStart(2, "0")} / 30`,
+      `${score > 0 ? "+" : "-"}${String(Math.abs(score)).padStart(2, "0")}`,
     );
     await expect(page.locator(".portrait-canvas")).toHaveAttribute(
       "aria-label",
@@ -58,9 +74,12 @@ test("键盘可以把滑杆移动到梁祖", async ({ page }) => {
   await slider.focus();
   await slider.press("End");
 
-  await expect(slider).toHaveValue("30");
+  await expect(slider).toHaveValue("15");
   await expect(page.locator(".stage-name")).toHaveText("梁祖");
-  await expect(slider).toHaveAttribute("aria-valuetext", "梁祖，30 级，共 30 级");
+  await expect(slider).toHaveAttribute(
+    "aria-valuetext",
+    "梁祖，强度 +15，范围 -15 到 +15",
+  );
 });
 
 test("Canvas 已完成实际绘制", async ({ page }) => {
@@ -73,36 +92,22 @@ test("Canvas 已完成实际绘制", async ({ page }) => {
   expect(dimensions.height).toBeGreaterThan(300);
 });
 
-test("31 个语义等级映射到 241 帧连续视频", async ({ page }) => {
+test("31 个语义等级映射到同编号人物图片", async ({ page }) => {
   const canvas = page.locator(".portrait-canvas");
 
-  for (let level = 0; level <= 30; level += 1) {
-    await setSliderLevel(page, level);
+  for (let score = -15; score <= 15; score += 1) {
+    await setSliderScore(page, score);
     await expect(canvas).toHaveAttribute(
       "data-frame",
-      String(level * 8).padStart(3, "0"),
+      String(score + 15).padStart(2, "0"),
     );
   }
 });
 
-test("连续滑动位置会定位到对应视频画面", async ({ page }) => {
-  const video = page.locator(".evolution-video");
-  await expect(video).toHaveCount(1);
-  await expect
-    .poll(() =>
-      video.evaluate((element) => (element as HTMLVideoElement).readyState),
-    )
-    .toBeGreaterThanOrEqual(2);
-
-  await setSliderLevel(page, 12.35);
-  await expect(page.locator("#strength-slider")).toHaveValue("12.35");
-  await expect(page.locator(".portrait-canvas")).toHaveAttribute("data-frame", "099");
-
-  const timing = await video.evaluate((element) => {
-    const media = element as HTMLVideoElement;
-    return { currentTime: media.currentTime, duration: media.duration };
-  });
-  expect(timing.currentTime).toBeCloseTo((12.35 / 30) * timing.duration, 1);
+test("滑动位置会绘制对应等级图片", async ({ page }) => {
+  await setSliderScore(page, 3);
+  await expect(page.locator("#strength-slider")).toHaveValue("3");
+  await expect(page.locator(".portrait-canvas")).toHaveAttribute("data-frame", "18");
 });
 
 test("六个状态标签与对应的大刻度对准", async ({ page }) => {
@@ -110,7 +115,7 @@ test("六个状态标签与对应的大刻度对准", async ({ page }) => {
     markers.map((marker, index) => {
       const markerRect = marker.getBoundingClientRect();
       const tickRect = document
-        .querySelector<HTMLElement>(`.tick[data-level="${index * 6}"]`)!
+        .querySelector<HTMLElement>(`.tick[data-score="${-15 + index * 6}"]`)!
         .getBoundingClientRect();
 
       return Math.abs(
@@ -125,7 +130,7 @@ test("六个状态标签与对应的大刻度对准", async ({ page }) => {
 });
 
 test("页面在当前视口没有横向溢出", async ({ page }, testInfo) => {
-  await setSliderLevel(page, 30);
+  await setSliderScore(page, 15);
 
   const viewport = await page.evaluate(() => ({
     scrollWidth: document.documentElement.scrollWidth,

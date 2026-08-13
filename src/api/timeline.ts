@@ -15,7 +15,7 @@ export async function handleGetTimeline(request: Request, env: Env): Promise<Res
   const from = parseDateParam(url, "from");
   const to = parseDateParam(url, "to");
 
-  let query = "SELECT date, score, level, stage, up_count, down_count, major_event_id FROM score_snapshots";
+  let query = "SELECT date, score, stage, positive_count, negative_count, neutral_count, major_event_id FROM score_snapshots";
   const binds: string[] = [];
   const conditions: string[] = [];
 
@@ -35,7 +35,15 @@ export async function handleGetTimeline(request: Request, env: Env): Promise<Res
   const snapshots = await env.DB
     .prepare(query)
     .bind(...binds)
-    .all<{ date: string; score: number; level: number; stage: string; up_count: number; down_count: number; major_event_id: number | null }>();
+    .all<{
+      date: string;
+      score: number;
+      stage: string;
+      positive_count: number;
+      negative_count: number;
+      neutral_count: number;
+      major_event_id: number | null;
+    }>();
 
   const results: TimelineDayResponse[] = [];
   for (const snap of snapshots.results ?? []) {
@@ -43,10 +51,10 @@ export async function handleGetTimeline(request: Request, env: Env): Promise<Res
     results.push({
       date: snap.date,
       score: snap.score,
-      level: snap.level,
       stage: snap.stage,
-      upCount: snap.up_count,
-      downCount: snap.down_count,
+      positiveCount: snap.positive_count,
+      negativeCount: snap.negative_count,
+      neutralCount: snap.neutral_count,
       events,
     });
   }
@@ -62,9 +70,16 @@ export async function handleGetTimelineDay(request: Request, env: Env, date: str
   }
 
   const snap = await env.DB
-    .prepare("SELECT date, score, level, stage, up_count, down_count FROM score_snapshots WHERE date = ?")
+    .prepare("SELECT date, score, stage, positive_count, negative_count, neutral_count FROM score_snapshots WHERE date = ?")
     .bind(date)
-    .first<{ date: string; score: number; level: number; stage: string; up_count: number; down_count: number }>();
+    .first<{
+      date: string;
+      score: number;
+      stage: string;
+      positive_count: number;
+      negative_count: number;
+      neutral_count: number;
+    }>();
 
   if (!snap) {
     return jsonResponse({ error: "not found" }, { status: 404 });
@@ -75,10 +90,10 @@ export async function handleGetTimelineDay(request: Request, env: Env, date: str
   return jsonResponse({
     date: snap.date,
     score: snap.score,
-    level: snap.level,
     stage: snap.stage,
-    upCount: snap.up_count,
-    downCount: snap.down_count,
+    positiveCount: snap.positive_count,
+    negativeCount: snap.negative_count,
+    neutralCount: snap.neutral_count,
     events,
   } satisfies TimelineDayResponse, {
     headers: { "Cache-Control": "public, max-age=3600" },
@@ -101,13 +116,22 @@ async function getEventsForDate(env: Env, date: string): Promise<TimelineEventRe
 
 export async function recordDailySnapshot(env: Env, date: string): Promise<void> {
   const state = await getScoreState(env);
-  const level = Math.round(state.score * 100) / 100;
   const stage = scoreToStage(state.score);
 
   const voteCounts = await env.DB
-    .prepare("SELECT SUM(CASE WHEN direction='up' THEN 1 ELSE 0 END) as up, SUM(CASE WHEN direction='down' THEN 1 ELSE 0 END) as down FROM votes WHERE date = ?")
+    .prepare(
+      `SELECT
+        SUM(CASE WHEN position > 0 THEN 1 ELSE 0 END) as positive_count,
+        SUM(CASE WHEN position < 0 THEN 1 ELSE 0 END) as negative_count,
+        SUM(CASE WHEN position = 0 THEN 1 ELSE 0 END) as neutral_count
+       FROM votes WHERE date = ?`,
+    )
     .bind(date)
-    .first<{ up: number | null; down: number | null }>();
+    .first<{
+      positive_count: number | null;
+      negative_count: number | null;
+      neutral_count: number | null;
+    }>();
 
   const majorEvent = await env.DB
     .prepare("SELECT id FROM news_events WHERE date = ? AND is_major = 1 ORDER BY impact DESC LIMIT 1")
@@ -116,20 +140,22 @@ export async function recordDailySnapshot(env: Env, date: string): Promise<void>
 
   await env.DB
     .prepare(
-      `INSERT OR REPLACE INTO score_snapshots (date, score, level, stage, up_count, down_count, major_event_id)
+      `INSERT OR REPLACE INTO score_snapshots (
+        date, score, stage, positive_count, negative_count, neutral_count, major_event_id
+      )
        VALUES (?, ?, ?, ?, ?, ?, ?)`,
     )
     .bind(
       date,
       state.score,
-      level,
       stage,
-      voteCounts?.up ?? 0,
-      voteCounts?.down ?? 0,
+      voteCounts?.positive_count ?? 0,
+      voteCounts?.negative_count ?? 0,
+      voteCounts?.neutral_count ?? 0,
       majorEvent?.id ?? null,
     )
     .run();
 
   const newState = { ...state, daysSinceLaunch: state.daysSinceLaunch + 1 };
-  await env.KV.put("score_state", JSON.stringify(newState));
+  await env.KV.put("signed_score_state", JSON.stringify(newState));
 }
