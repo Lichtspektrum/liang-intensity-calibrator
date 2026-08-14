@@ -190,6 +190,13 @@ export class CommunityUnavailableError extends Error {
   }
 }
 
+export class ChatRateLimitError extends Error {
+  constructor() {
+    super("Chat hourly rate limit reached");
+    this.name = "ChatRateLimitError";
+  }
+}
+
 function normalizeBaseUrl(value: string | undefined): string | null {
   const trimmed = value?.trim();
   if (!trimmed) return null;
@@ -584,11 +591,14 @@ export function createApiClient(baseUrl: string | undefined): ApiClient {
       } else if (history.length > 0) {
         payload.history = history;
       }
-      const result = await fetchJson<unknown>("/api/chat", {
+      const response = await fetch(`${base}/api/chat`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       });
+      if (response.status === 429) throw new ChatRateLimitError();
+      if (!response.ok) throw new Error(`API error: ${response.status}`);
+      const result = await readJson(response);
       if (!isChatData(result)) throw new Error("Invalid chat response");
       return result;
     },

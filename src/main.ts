@@ -1,7 +1,7 @@
 import "./styles.css";
 
 import { type AppController, type AppMode, mountApp } from "./app";
-import { createApiClient, type ModePositionsData, type ScoreData, type TimelineDayData } from "./api";
+import { ChatRateLimitError, createApiClient, type ModePositionsData, type ScoreData, type TimelineDayData } from "./api";
 import { MAX_SCORE, MIN_SCORE } from "./score-domain";
 import { easeInOutCubic, scoreTransitionDurationMs } from "./score-transition";
 import {
@@ -211,8 +211,12 @@ controller.onChatSubmit = async (message: string) => {
     const generation = ++chatTransitionGeneration;
     await animateChatScore(transitionStart, result.score, generation);
     controller.setModePosition("chat", result.score);
-  } catch {
-    controller.setChatError("这次回答没有生成成功，请稍后重试");
+  } catch (error) {
+    controller.setChatError(
+      error instanceof ChatRateLimitError
+        ? "本小时对话次数已用完，请稍后再试"
+        : "这次回答没有生成成功，请稍后重试",
+    );
   } finally {
     chatInFlight = false;
   }

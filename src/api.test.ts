@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { CommunityUnavailableError, createApiClient } from "./api";
+import { ChatRateLimitError, CommunityUnavailableError, createApiClient } from "./api";
 
 const score = {
   score: 2.5,
@@ -18,7 +18,7 @@ afterEach(() => {
 });
 
 describe("createApiClient", () => {
-  it("用规范化后的独立 API 绝对地址读取分数和时间线", async () => {
+  it("用规范化后的独立 API 绝对地址读取分数和历史快照", async () => {
     const fetchMock = vi.fn()
       .mockResolvedValueOnce(new Response(JSON.stringify(score)))
       .mockResolvedValueOnce(new Response(JSON.stringify([
@@ -194,7 +194,7 @@ describe("createApiClient", () => {
     await expect(client.fetchScore()).resolves.toEqual(midpoint);
   });
 
-  it("拒绝无效时间线日期、分值和阶段", async () => {
+  it("拒绝无效快照日期、分值和阶段", async () => {
     const invalidDays = [
       [{ date: "2026-02-30", score: 2.5, stage: "梁圣", voterCount: 4 }],
       [{ date: '<img src=x onerror=alert(1)>', score: 2.5, stage: "梁圣", voterCount: 4 }],
@@ -294,5 +294,57 @@ describe("createApiClient", () => {
     await expect(client.submitVote("fingerprint-123", 3)).rejects.toThrow(
       "Invalid vote response",
     );
+  });
+
+  it("把对话限流的 429 区分成独立错误类型", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ error: "rate_limited" }), { status: 429 }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const client = createApiClient("https://liang-api.example.com");
+
+    await expect(client.chat("你好")).rejects.toBeInstanceOf(ChatRateLimitError);
+    const body = JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body));
+    expect(body).toEqual({ message: "你好" });
+  });
+
+  it("发送对话时携带 conversationId 且校验返回的对话信息", async () => {
+    const chatBody = {
+      score: 6,
+      stage: "梁圣",
+      answer: "先看真正的瓶颈。",
+      calibrationSummary: "偏向主线。",
+      dimensions: { originality: 0.4, openness: 0.2, efficiency: 0.2, intelligence: 0.6, restraint: 0.2 },
+      disclaimer: "simulation",
+      conversation: { id: "00000000-0000-4000-8000-000000000001", title: "先做原创研究" },
+    };
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify(chatBody)));
+    vi.stubGlobal("fetch", fetchMock);
+    const client = createApiClient("https://liang-api.example.com");
+
+    await expect(
+      client.chat("下一步呢？", undefined, "00000000-0000-4000-8000-000000000001"),
+    ).resolves.toEqual(chatBody);
+    const body = JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body));
+    expect(body).toEqual({
+      message: "下一步呢？",
+      conversationId: "00000000-0000-4000-8000-000000000001",
+    });
+    expect(body.history).toBeUndefined();
+  });
+
+  it("拒绝缺少 conversation 字段的对话响应", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({
+      score: 6,
+      stage: "梁圣",
+      answer: "答",
+      calibrationSummary: "总",
+      dimensions: { originality: 0, openness: 0, efficiency: 0, intelligence: 0, restraint: 0 },
+      disclaimer: "d",
+    })));
+    vi.stubGlobal("fetch", fetchMock);
+    const client = createApiClient("https://liang-api.example.com");
+
+    await expect(client.chat("你好")).rejects.toThrow("Invalid chat response");
   });
 });

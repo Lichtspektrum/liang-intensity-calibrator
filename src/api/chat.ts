@@ -150,16 +150,34 @@ export function leaksModelIdentity(answer: string): boolean {
   return ROLE_LEAK_PATTERN.test(answer);
 }
 
-async function consumeChatQuota(request: Request, env: Env, now = Date.now()): Promise<boolean> {
+async function readChatQuota(request: Request, env: Env, now = Date.now()): Promise<{ ipHash: string; hourBucket: string; count: number } | null> {
   const ip = request.headers.get("X-Client-IP")?.trim();
-  if (!ip) return false;
+  if (!ip) return null;
   const ipHash = await hmacIdentifier(env.VOTER_HASH_SECRET, `chat:${ip}`);
   const hourBucket = new Date(now).toISOString().slice(0, 13);
   const existing = await env.DB
     .prepare("SELECT request_count FROM ai_request_limits WHERE ip_hash = ? AND hour_bucket = ?")
     .bind(ipHash, hourBucket)
     .first<{ request_count: number }>();
-  if ((existing?.request_count ?? 0) >= CHAT_REQUESTS_PER_HOUR) return false;
+  return { ipHash, hourBucket, count: existing?.request_count ?? 0 };
+}
+
+/**
+ * 生成前预检额度：额度已用完时直接拒绝，避免空耗一次模型调用。
+ */
+async function checkChatQuota(request: Request, env: Env, now = Date.now()): Promise<boolean> {
+  const usage = await readChatQuota(request, env, now);
+  if (!usage) return false;
+  return usage.count < CHAT_REQUESTS_PER_HOUR;
+}
+
+/**
+ * 仅在回答成功后记账一次；失败的生成不计入小时额度，
+ * 避免免费模型偶发失败把本小时额度耗尽。
+ */
+async function consumeChatQuota(request: Request, env: Env, now = Date.now()): Promise<void> {
+  const usage = await readChatQuota(request, env, now);
+  if (!usage) return;
   await env.DB
     .prepare(
       `INSERT INTO ai_request_limits (ip_hash, hour_bucket, request_count)
@@ -167,9 +185,8 @@ VALUES (?, ?, 1)
 ON CONFLICT(ip_hash, hour_bucket) DO UPDATE SET
   request_count = request_count + 1`,
     )
-    .bind(ipHash, hourBucket)
+    .bind(usage.ipHash, usage.hourBucket)
     .run();
-  return true;
 }
 
 export async function handlePostChat(request: Request, env: Env): Promise<Response> {
@@ -182,7 +199,7 @@ export async function handlePostChat(request: Request, env: Env): Promise<Respon
   const chatRequest = parseChatRequest(body);
   if (!chatRequest) return jsonResponse({ error: "invalid_message" }, { status: 400 });
   const { message, conversationId } = chatRequest;
-  if (!await consumeChatQuota(request, env)) {
+  if (!await checkChatQuota(request, env)) {
     return jsonResponse({ error: "rate_limited" }, { status: 429 });
   }
 
@@ -227,6 +244,11 @@ export async function handlePostChat(request: Request, env: Env): Promise<Respon
     }
     const score = Math.round(dimensionSignal(parsed.dimensions) * 15 * 10) / 10;
     const stage = describeScore(score).stage;
+    try {
+      await consumeChatQuota(request, env);
+    } catch {
+      // 记账失败不阻断本次回答。
+    }
     const conversation = await persistChatExchange(env, {
       conversationId,
       title: conversationTitle,

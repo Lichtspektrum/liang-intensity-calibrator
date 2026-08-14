@@ -153,7 +153,8 @@ describe("chat API", () => {
         .mockResolvedValueOnce({
           id: "00000000-0000-4000-8000-000000000001",
           title: "先做原创研究",
-        }),
+        })
+        .mockResolvedValue(null),
       all: vi.fn().mockResolvedValue({
         success: true,
         results: [
@@ -267,5 +268,46 @@ describe("chat API", () => {
     const conversationInsert = binds.find((values) =>
       typeof values[0] === "string" && values[1] === "先做原创研究");
     expect(conversationInsert).toBeDefined();
+  });
+
+  it("rejects without calling the model when the hourly quota is exhausted", async () => {
+    const statement = {
+      bind: vi.fn().mockReturnThis(),
+      first: vi.fn().mockResolvedValue({ request_count: 20 }),
+      all: vi.fn(),
+      run: vi.fn(),
+    };
+    const env = {
+      DB: { prepare: vi.fn().mockReturnValue(statement) } as unknown as AppDatabase,
+      AI_RUNNER: vi.fn(),
+      VOTER_HASH_SECRET: "a".repeat(32),
+      ALLOWED_ORIGINS: "https://app.example",
+    };
+
+    const response = await handlePostChat(request({ message: "测试" }), env);
+    expect(response.status).toBe(429);
+    await expect(response.json()).resolves.toEqual({ error: "rate_limited" });
+    expect(env.AI_RUNNER).not.toHaveBeenCalled();
+    expect(statement.run).not.toHaveBeenCalled();
+  });
+
+  it("does not record quota when the generation fails", async () => {
+    const statement = {
+      bind: vi.fn().mockReturnThis(),
+      first: vi.fn().mockResolvedValue(null),
+      all: vi.fn(),
+      run: vi.fn(),
+    };
+    const env = {
+      DB: { prepare: vi.fn().mockReturnValue(statement) } as unknown as AppDatabase,
+      AI_RUNNER: vi.fn().mockRejectedValue(new Error("CLI unavailable")),
+      VOTER_HASH_SECRET: "a".repeat(32),
+      ALLOWED_ORIGINS: "https://app.example",
+    };
+
+    const response = await handlePostChat(request({ message: "测试" }), env);
+    expect(response.status).toBe(503);
+    // 失败不写任何数据：没有限流计数，也没有对话持久化。
+    expect(statement.run).not.toHaveBeenCalled();
   });
 });
