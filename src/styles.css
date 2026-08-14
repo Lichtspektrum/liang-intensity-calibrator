@@ -240,6 +240,15 @@ h1 {
   object-fit: cover;
 }
 
+.evolution-video {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  opacity: 0;
+  pointer-events: none;
+}
+
 .portrait-shell > .ssr-poster {
   position: absolute;
   z-index: 2;

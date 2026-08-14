@@ -1,6 +1,7 @@
 import { describeScore, MAX_SCORE, MIN_SCORE } from "./score-domain";
 
 const VIDEO_FPS = 30;
+const INTERPOLATED_FRAME_COUNT = 241;
 
 export interface VideoRenderer {
   drawPoster(poster: HTMLImageElement, initialScore: number): Promise<void>;
@@ -12,6 +13,14 @@ export interface VideoRenderer {
 export function scoreToVideoTime(score: number, duration: number): number {
   const { score: clampedScore } = describeScore(score);
   return ((clampedScore - MIN_SCORE) / (MAX_SCORE - MIN_SCORE)) * duration;
+}
+
+export function scoreToVideoFrame(score: number): number {
+  const { score: clampedScore } = describeScore(score);
+  return Math.round(
+    ((clampedScore - MIN_SCORE) / (MAX_SCORE - MIN_SCORE)) *
+      (INTERPOLATED_FRAME_COUNT - 1),
+  );
 }
 
 function resizeCanvasToDisplaySize(canvas: HTMLCanvasElement): void {
@@ -36,7 +45,6 @@ function getCanvasContext(canvas: HTMLCanvasElement): CanvasRenderingContext2D {
 function drawSource(
   canvas: HTMLCanvasElement,
   source: CanvasImageSource,
-  score: number,
 ): void {
   resizeCanvasToDisplaySize(canvas);
   const context = getCanvasContext(canvas);
@@ -44,7 +52,6 @@ function drawSource(
   context.imageSmoothingEnabled = true;
   context.imageSmoothingQuality = "high";
   context.drawImage(source, 0, 0, canvas.width, canvas.height);
-  canvas.dataset.frame = String(describeScore(score).frameIndex).padStart(2, "0");
 }
 
 function seekVideo(video: HTMLVideoElement, targetTime: number): Promise<void> {
@@ -73,9 +80,12 @@ function seekVideo(video: HTMLVideoElement, targetTime: number): Promise<void> {
 
 export function createVideoRenderer(canvas: HTMLCanvasElement): VideoRenderer {
   const video = document.createElement("video");
-  video.preload = "metadata";
+  video.className = "evolution-video";
+  video.preload = "auto";
   video.muted = true;
   video.playsInline = true;
+  video.tabIndex = -1;
+  video.setAttribute("aria-hidden", "true");
 
   const webmSource = document.createElement("source");
   webmSource.src = "/video/liang-evolution.webm";
@@ -84,17 +94,67 @@ export function createVideoRenderer(canvas: HTMLCanvasElement): VideoRenderer {
   mp4Source.src = "/video/liang-evolution.mp4";
   mp4Source.type = 'video/mp4; codecs="avc1.64001f"';
   video.append(webmSource, mp4Source);
+  canvas.after(video);
 
   let displayedScore = 0;
   let videoReady = false;
   let seekFrame = 0;
+  let pendingTargetTime: number | null = null;
+  let seekInFlight = false;
 
   const drawVideo = (): void => {
     if (videoReady && video.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA) {
-      drawSource(canvas, video, displayedScore);
+      drawSource(canvas, video);
+      canvas.dataset.frame = String(scoreToVideoFrame(displayedScore)).padStart(3, "0");
     }
   };
-  video.addEventListener("seeked", drawVideo);
+
+  const drawDecodedFrame = (): void => {
+    drawVideo();
+    if (typeof video.requestVideoFrameCallback === "function") {
+      video.requestVideoFrameCallback(() => {
+        if (!seekInFlight && pendingTargetTime === null) {
+          drawVideo();
+        }
+      });
+    }
+  };
+
+  const scheduleLatestSeek = (): void => {
+    cancelAnimationFrame(seekFrame);
+    seekFrame = requestAnimationFrame(() => {
+      if (
+        seekInFlight ||
+        pendingTargetTime === null ||
+        !Number.isFinite(pendingTargetTime) ||
+        video.readyState < HTMLMediaElement.HAVE_METADATA
+      ) {
+        return;
+      }
+
+      if (Math.abs(video.currentTime - pendingTargetTime) < 0.001) {
+        pendingTargetTime = null;
+        drawDecodedFrame();
+        return;
+      }
+
+      seekInFlight = true;
+      video.currentTime = pendingTargetTime;
+    });
+  };
+
+  video.addEventListener("seeked", () => {
+    seekInFlight = false;
+    if (
+      pendingTargetTime !== null &&
+      Math.abs(video.currentTime - pendingTargetTime) < 0.001
+    ) {
+      pendingTargetTime = null;
+      drawDecodedFrame();
+      return;
+    }
+    scheduleLatestSeek();
+  });
 
   return {
     async drawPoster(poster, initialScore) {
@@ -102,7 +162,8 @@ export function createVideoRenderer(canvas: HTMLCanvasElement): VideoRenderer {
         await poster.decode();
       }
       displayedScore = initialScore;
-      drawSource(canvas, poster, initialScore);
+      drawSource(canvas, poster);
+      canvas.dataset.frame = String(describeScore(initialScore).frameIndex).padStart(2, "0");
     },
     async loadVideo() {
       await new Promise<void>((resolve, reject) => {
@@ -123,15 +184,13 @@ export function createVideoRenderer(canvas: HTMLCanvasElement): VideoRenderer {
     },
     render(score) {
       displayedScore = score;
-      canvas.dataset.frame = String(describeScore(score).frameIndex).padStart(2, "0");
+      canvas.dataset.frame = String(scoreToVideoFrame(score)).padStart(3, "0");
       if (!videoReady || !Number.isFinite(video.duration)) return;
 
-      cancelAnimationFrame(seekFrame);
-      seekFrame = requestAnimationFrame(() => {
-        const targetTime = scoreToVideoTime(score, video.duration);
-        const lastFrameTime = Math.max(0, video.duration - 1 / VIDEO_FPS);
-        video.currentTime = Math.min(targetTime, lastFrameTime);
-      });
+      const targetTime = scoreToVideoTime(score, video.duration);
+      const lastFrameTime = Math.max(0, video.duration - 1 / VIDEO_FPS);
+      pendingTargetTime = Math.min(targetTime, lastFrameTime);
+      scheduleLatestSeek();
     },
     redraw: drawVideo,
   };

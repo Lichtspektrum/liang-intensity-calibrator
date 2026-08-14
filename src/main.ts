@@ -113,6 +113,7 @@ async function loadInitialView(): Promise<void> {
     controller.setScore(initialScoreData.score);
     await renderer.drawPoster(initialPoster, initialScoreData.score);
     initialPoster.remove();
+    controller.setFirstFrameReady();
     await renderer.loadVideo();
     controller.setReady();
   } catch {

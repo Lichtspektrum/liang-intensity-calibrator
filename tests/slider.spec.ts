@@ -43,7 +43,7 @@ test("页面包含完整的 31 级控制与六个命名节点", async ({ page })
 
   await expect(slider).toHaveAttribute("min", "-15");
   await expect(slider).toHaveAttribute("max", "15");
-  await expect(slider).toHaveAttribute("step", "1");
+  await expect(slider).toHaveAttribute("step", "0.01");
   await expect(page.locator(".tick")).toHaveCount(31);
   await expect(page.locator(".stage-marker")).toHaveText([
     "小难梁",
@@ -92,22 +92,22 @@ test("Canvas 已完成实际绘制", async ({ page }) => {
   expect(dimensions.height).toBeGreaterThan(300);
 });
 
-test("31 个语义等级映射到同编号人物图片", async ({ page }) => {
+test("连续滑动位置映射到 241 帧视频中的对应插值帧", async ({ page }) => {
   const canvas = page.locator(".portrait-canvas");
 
-  for (let score = -15; score <= 15; score += 1) {
+  for (const score of [-15, -7.5, 0, 4.5, 15]) {
     await setSliderScore(page, score);
     await expect(canvas).toHaveAttribute(
       "data-frame",
-      String(score + 15).padStart(2, "0"),
+      String(Math.round(((score + 15) / 30) * 240)).padStart(3, "0"),
     );
   }
 });
 
 test("滑动位置会绘制对应等级图片", async ({ page }) => {
-  await setSliderScore(page, 3);
-  await expect(page.locator("#strength-slider")).toHaveValue("3");
-  await expect(page.locator(".portrait-canvas")).toHaveAttribute("data-frame", "18");
+  await setSliderScore(page, 3.35);
+  await expect(page.locator("#strength-slider")).toHaveValue("3.35");
+  await expect(page.locator(".portrait-canvas")).toHaveAttribute("data-frame", "147");
 });
 
 test("六个状态标签与对应的大刻度对准", async ({ page }) => {

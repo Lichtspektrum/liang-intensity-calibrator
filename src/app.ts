@@ -10,6 +10,7 @@ import {
   clampScore,
   describeScore,
   formatSignedScore,
+  normalizeVotePosition,
 } from "./score-domain";
 
 export interface AppController {
@@ -19,6 +20,7 @@ export interface AppController {
   setScore(score: number): void;
   setDisplayScore(score: number): void;
   setLoading(loaded: number, total: number): void;
+  setFirstFrameReady(): void;
   setReady(): void;
   setError(message: string): void;
   setCommunityScore(score: ScoreData): void;
@@ -138,7 +140,7 @@ export function mountApp(
                   type="range"
                   min="-15"
                   max="15"
-                  step="1"
+                  step="0.01"
                   value="0"
                   aria-label="梁系强度"
                   aria-valuetext="梁子，强度 00，范围 -15 到 +15"
@@ -185,7 +187,7 @@ export function mountApp(
   const timelineReturnBtn = root.querySelector<HTMLButtonElement>(".timeline-return-btn")!;
   const timelineHeader = root.querySelector<HTMLElement>(".timeline-header")!;
 
-  let currentPosition = 0;
+  let previewPosition = 0;
   let displayPosition = 0;
   let currentMode: "idle" | "previewing-vote" | "viewing-history" = "idle";
   let communityLevel = 0;
@@ -231,22 +233,17 @@ export function mountApp(
     onScoreChange(position);
   };
 
-  const setUserSliderPosition = (rawScore: number): void => {
-    const position = clampScore(rawScore);
-    currentPosition = position;
-    slider.value = String(position);
-  };
-
   const setScore = (rawScore: number): void => {
-    setDisplayScore(rawScore);
-    setUserSliderPosition(rawScore);
+    previewPosition = clampScore(rawScore);
+    setDisplayScore(previewPosition);
+    slider.value = String(previewPosition);
   };
 
   slider.addEventListener("input", () => {
     if (currentMode === "viewing-history") return;
     currentMode = "previewing-vote";
     const position = Number(slider.value);
-    setUserSliderPosition(position);
+    previewPosition = clampScore(position);
     setDisplayScore(position);
   });
 
@@ -254,7 +251,7 @@ export function mountApp(
     if (currentMode === "previewing-vote") {
       currentMode = "idle";
       const controller = (root as HTMLElement & { _controller?: AppController })._controller;
-      controller?.onVote?.(currentPosition);
+      controller?.onVote?.(normalizeVotePosition(previewPosition));
     }
   });
 
@@ -276,9 +273,11 @@ export function mountApp(
     setLoading(loaded, total) {
       loadState.textContent = loaded >= total ? "连续祖力已就绪" : "载入连续祖力…";
     },
+    setFirstFrameReady() {
+      loadState.hidden = true;
+    },
     setReady() {
       slider.disabled = false;
-      loadState.hidden = true;
     },
     setError(message) {
       slider.disabled = true;
@@ -295,7 +294,7 @@ export function mountApp(
       );
       communityGhostThumb.setAttribute("aria-label", `社区当前分值 ${communityLevel.toFixed(2)}`);
       if (currentMode === "idle") {
-        setDisplayScore(communityLevel);
+        setScore(communityLevel);
       }
       controller.setVotingState({
         positiveCount: scoreData.positiveCount,
@@ -309,15 +308,10 @@ export function mountApp(
     setUserVotePosition(position) {
       userVotePosition = position === null ? null : clampScore(position);
       if (userVotePosition === null) {
-        setUserSliderPosition(communityLevel);
         voteStatus.textContent = "主滑块表示你的投票，阴影圆点表示社区结果";
         return;
       }
       voteStatus.textContent = `你已投票：${formatSignedScore(userVotePosition)}；阴影圆点是社区结果`;
-      setUserSliderPosition(userVotePosition);
-      if (currentMode === "idle") {
-        setDisplayScore(communityLevel);
-      }
     },
     setVotingState(state) {
       updateVotePoints(voteCountUp, state.positivePoints);
@@ -345,7 +339,7 @@ export function mountApp(
     },
     enterHistoryMode(date, score) {
       currentMode = "viewing-history";
-      setDisplayScore(score);
+      setScore(score);
       slider.disabled = true;
       timelineReturnBtn.hidden = false;
       experience.classList.add("is-history-mode");
@@ -357,7 +351,7 @@ export function mountApp(
       timelineReturnBtn.hidden = true;
       experience.classList.remove("is-history-mode");
       timelineHeader.textContent = "时间线";
-      setDisplayScore(communityLevel);
+      setScore(communityLevel);
     },
   };
 
