@@ -2,7 +2,7 @@
 
 import { beforeEach, describe, expect, it } from "vitest";
 
-import { formatVoteCount, mountApp } from "./app";
+import { mountApp } from "./app";
 
 describe("liang slider app", () => {
   let root: HTMLElement;
@@ -54,63 +54,38 @@ describe("liang slider app", () => {
     expect(root.querySelector(".load-state")?.textContent).toBe("载入连续祖力…");
   });
 
-  it("社区数据未加载前隐藏灰色圆点，成功后再显示", () => {
-    const controller = mountApp(root);
-    const ghost = root.querySelector<HTMLElement>(".community-ghost-thumb")!;
-
-    expect(ghost.hidden).toBe(true);
-    controller.setCommunityUnavailable();
-    expect(root.querySelector(".vote-status")?.textContent).toBe("社区数据暂时无法加载");
-    expect(ghost.hidden).toBe(true);
-
-    controller.setCommunityScore({
-      score: 2.5,
-      stage: "梁圣",
-      voterCount: 4,
-      positiveCount: 3,
-      negativeCount: 1,
-      neutralCount: 0,
-      positivePoints: 13,
-      negativePoints: -3,
-    });
-    expect(ghost.hidden).toBe(false);
-  });
-
-  it("直接说明圆点含义、提交方式和分值方向", () => {
+  it("只展示本机手动校准说明，不展示未完成的在线功能文案", () => {
     mountApp(root);
 
-    const status = root.querySelector(".vote-status")!;
-    expect(status.textContent).toBe(
-      "红色圆点是你的选择，灰色圆点是社区平均分",
-    );
+    const status = root.querySelector(".calibration-status")!;
+    expect(status.textContent).toBe("拖动滑片即可连续校准，当前位置会保存在本机");
     expect(status.getAttribute("role")).toBe("status");
     expect(status.getAttribute("aria-live")).toBe("polite");
     expect(root.querySelector(".drag-hint")?.textContent?.replace(/\s+/g, " ").trim()).toBe(
-      "← 拖动红色圆点，松开即提交。−15 最弱，0 居中，+15 最强；每 3 小时可修改一次。 →",
+      "← 拖动滑片连续校准。−15 最弱，0 居中，+15 最强；松开后记住当前位置。 →",
     );
+    expect(root.textContent).not.toMatch(/投票|社区平均/u);
   });
 
-  it("用直白文案说明冷却、提交失败和社区加载失败", () => {
+  it("用直白文案说明自动模式和手动降级", () => {
     const controller = mountApp(root);
-    const status = root.querySelector<HTMLElement>(".vote-status")!;
+    const status = root.querySelector<HTMLElement>(".calibration-status")!;
 
     controller.setReady();
-    controller.setCooldown(2 * 60 * 60 * 1_000 + 18 * 60 * 1_000);
-    expect(status.textContent).toBe("还需 2 小时 18 分才能修改投票");
-    expect(controller.slider.disabled).toBe(false);
+    controller.setAppMode("news");
+    expect(status.textContent).toBe("由今日 AI 新闻自动校准，变阻器将跟随分析结果");
+    expect(controller.slider.disabled).toBe(true);
+    controller.setAppMode("chat");
+    expect(status.textContent).toBe("由当前对话自动校准，变阻器将平滑移动到分析结果");
 
-    controller.setCooldown(18 * 60 * 1_000);
-    expect(status.textContent).toBe("还需 18 分才能修改投票");
-    controller.setCooldown(2 * 60 * 60 * 1_000);
-    expect(status.textContent).toBe("还需 2 小时才能修改投票");
-
+    controller.setAppMode("manual");
     controller.setVoteError();
-    expect(status.textContent).toBe("提交失败，请稍后重试");
+    expect(status.textContent).toBe("在线状态暂不可用，仍可继续手动校准");
     controller.setCommunityUnavailable();
-    expect(status.textContent).toBe("提交失败，请稍后重试");
+    expect(status.textContent).toBe("在线状态暂不可用，仍可继续手动校准");
   });
 
-  it("冷却时仍可预览，恢复已保存位置时不二次投票", () => {
+  it("手动模式可随时拖动并保存位置", () => {
     const controller = mountApp(root);
     const votes: number[] = [];
     controller.onVote = (position) => {
@@ -119,7 +94,6 @@ describe("liang slider app", () => {
     };
     controller.setReady();
     controller.setUserVotePosition(6);
-    controller.setCooldown(60_000);
 
     const slider = controller.slider;
     slider.value = "11";
@@ -131,32 +105,12 @@ describe("liang slider app", () => {
     expect(controller.score).toBe(6);
     expect(slider.value).toBe("6");
     expect(votes).toEqual([11]);
-    expect(root.querySelector(".vote-status")?.textContent).toBe(
-      "还需 1 分才能修改投票",
+    expect(root.querySelector(".calibration-status")?.textContent).toBe(
+      "拖动滑片即可连续校准，当前位置会保存在本机",
     );
   });
 
-  it("冷却归零后在社区分数到达前显示加载中", () => {
-    const controller = mountApp(root);
-    controller.setUserVotePosition(6);
-    controller.setCooldown(1);
-    controller.setCooldown(0);
-
-    expect(root.querySelector(".vote-status")?.textContent).toBe(
-      "你的投票：+6　社区平均加载中",
-    );
-
-    controller.setCommunityScore({
-      score: 2.5, stage: "梁圣", voterCount: 4,
-      positiveCount: 3, negativeCount: 1, neutralCount: 0,
-      positivePoints: 13, negativePoints: -3,
-    });
-    expect(root.querySelector(".vote-status")?.textContent).toBe(
-      "你的投票：+6　社区平均：+2.5",
-    );
-  });
-
-  it("社区响应会补上灰点和统计，但不覆盖冷却或错误状态", () => {
+  it("在线基线不会覆盖已经保存的本机位置", () => {
     const controller = mountApp(root);
     const score = {
       score: 2.5, stage: "梁圣", voterCount: 4,
@@ -166,25 +120,10 @@ describe("liang slider app", () => {
     controller.setReady();
     controller.setUserVotePosition(6);
     controller.restoreVote(6);
-    controller.setCooldown(60_000);
-    controller.setCommunityUnavailable();
-    expect(root.querySelector(".vote-status")?.textContent).toBe("还需 1 分才能修改投票");
-    expect(root.querySelector<HTMLElement>(".community-ghost-thumb")?.hidden).toBe(true);
-    controller.setCooldown(0);
-    expect(root.querySelector(".vote-status")?.textContent).toBe("社区数据暂时无法加载");
     controller.setCommunityScore(score);
 
     expect(controller.score).toBe(6);
-    expect(root.querySelector<HTMLElement>(".community-ghost-thumb")?.hidden).toBe(false);
-    expect(root.querySelector(".vote-status")?.textContent).toBe("你的投票：+6　社区平均：+2.5");
-
-    controller.setVoteError();
-    controller.setCommunityUnavailable();
-    expect(root.querySelector(".vote-status")?.textContent).toBe("提交失败，请稍后重试");
-    expect(root.querySelector<HTMLElement>(".community-ghost-thumb")?.hidden).toBe(true);
-    controller.setCommunityScore(score);
-    expect(controller.score).toBe(6);
-    expect(root.querySelector(".vote-status")?.textContent).toBe("提交失败，请稍后重试");
+    expect(root.querySelector(".community-ghost-thumb, .vote-total")).toBeNull();
   });
 
   it("较慢的投票响应不会打断第二次拖动预览", async () => {
@@ -297,7 +236,7 @@ describe("liang slider app", () => {
     );
   });
 
-  it("滑动结束后将连续预览位置量化为整数投票，并保留端点计数", () => {
+  it("滑动结束后将连续预览位置量化为整数并保存", () => {
     const controller = mountApp(root);
     const positions: number[] = [];
     controller.onVote = (position) => positions.push(position);
@@ -306,22 +245,11 @@ describe("liang slider app", () => {
     slider.value = "8.6";
     slider.dispatchEvent(new Event("input", { bubbles: true }));
     slider.dispatchEvent(new Event("change", { bubbles: true }));
-    controller.setVotingState({
-      positiveCount: 1_100,
-      negativeCount: 8,
-      neutralCount: 2,
-      positivePoints: 33_000,
-      negativePoints: -40,
-    });
-
     expect(positions).toEqual([9]);
     expect(slider.value).toBe("8.6");
-    expect(root.querySelector(".vote-total--up number-flow")?.getAttribute("value")).toBe("33000");
-    expect(root.querySelector(".vote-total--down number-flow")?.getAttribute("value")).toBe("40");
-    expect(root.querySelector(".vote-btn")).toBeNull();
   });
 
-  it("默认展示社区连续分值，并把用户投票位置作为独立信息保留", () => {
+  it("在线基线可以设置初始连续分值", () => {
     const controller = mountApp(root);
 
     controller.setCommunityScore({
@@ -334,19 +262,13 @@ describe("liang slider app", () => {
       negativePoints: 0,
       voterCount: 2,
     });
-    controller.setUserVotePosition(15);
-
     const slider = root.querySelector<HTMLInputElement>("#strength-slider")!;
-    const ghostThumb = root.querySelector<HTMLElement>(".community-ghost-thumb")!;
-    const status = root.querySelector<HTMLElement>(".vote-status")!;
 
     expect(slider.value).toBe("7.5");
     expect(root.querySelector(".stage-name")?.textContent).toBe("梁圣");
-    expect(status.textContent).toBe("你的投票：+15　社区平均：+7.5");
-    expect(ghostThumb.style.getPropertyValue("--community-position")).toBe("75");
   });
 
-  it("先记录个人投票再更新社区分数时刷新完整状态", () => {
+  it("已经保存的本机位置优先于随后到达的在线基线", () => {
     const controller = mountApp(root);
 
     controller.setUserVotePosition(6);
@@ -361,9 +283,6 @@ describe("liang slider app", () => {
       voterCount: 3,
     });
 
-    expect(root.querySelector(".vote-status")?.textContent).toBe(
-      "你的投票：+6　社区平均：+2.4",
-    );
     expect(controller.score).toBe(6);
   });
 
@@ -375,6 +294,78 @@ describe("liang slider app", () => {
     );
 
     expect(labels).toEqual(["小难梁", "牢梁", "梁子", "梁圣", "梁神", "梁祖"]);
+  });
+
+  it("在手动、新闻和对话模式之间切换且不触发手动保存", () => {
+    const controller = mountApp(root);
+    const modes: string[] = [];
+    const votes: number[] = [];
+    controller.onModeChange = (mode) => modes.push(mode);
+    controller.onVote = (position) => votes.push(position);
+    controller.setReady();
+
+    root.querySelector<HTMLButtonElement>('[data-mode="news"]')!.click();
+    expect(root.querySelector<HTMLElement>(".news-panel")!.hidden).toBe(false);
+    expect(controller.slider.disabled).toBe(true);
+    root.querySelector<HTMLButtonElement>('[data-mode="chat"]')!.click();
+    expect(root.querySelector<HTMLElement>(".chat-panel")!.hidden).toBe(false);
+    root.querySelector<HTMLButtonElement>('[data-mode="manual"]')!.click();
+    expect(controller.slider.disabled).toBe(false);
+    expect(modes).toEqual(["news", "chat", "manual"]);
+    expect(votes).toEqual([]);
+  });
+
+  it("把新闻和聊天模型输出作为纯文本渲染", () => {
+    const controller = mountApp(root);
+    controller.setNewsResult({
+      date: "2026-08-14", score: 3, stage: "梁圣", headline: "<img src=x>",
+      rationale: "<script>bad()</script>",
+      dimensions: { originality: 0, openness: 0, efficiency: 0, intelligence: 0, restraint: 0 },
+      quote: { id: "q", dimension: "restraint", text: "<b>quote</b>", timestamp: "00:00:01" },
+      quoteSource: "https://example.com/original", transcriptSource: "https://example.com/transcript",
+      sourceCaveat: "unverified", items: [{
+        id: "bad", title: "<img src=x>", summaryZh: "<script>bad()</script>",
+        url: "javascript:alert(1)", source: "<b>source</b>",
+        publishedAt: "2026-08-14T01:00:00Z", tags: ["**tag**"],
+      }], collectedAt: Date.now(),
+    });
+    controller.setChatResult({
+      score: 1, stage: "梁子", answer: "<img src=x onerror=bad()>",
+      calibrationSummary: "<script>bad()</script>",
+      dimensions: { originality: 0, openness: 0, efficiency: 0, intelligence: 0, restraint: 0 },
+      disclaimer: "simulation",
+    });
+    expect(root.querySelector(".news-headline")?.textContent).toBe("<img src=x>");
+    expect(root.querySelector(".chat-answer")?.textContent).toContain("<img");
+    expect(root.querySelector(".mode-panel script, .mode-panel img")).toBeNull();
+    expect(root.querySelector(".news-markdown h3")?.textContent).toContain("<img");
+    expect(root.querySelector(".news-markdown a")?.hasAttribute("href")).toBe(false);
+  });
+
+  it("renders detailed news collection progress", () => {
+    const controller = mountApp(root);
+    controller.setNewsLoading();
+    controller.setNewsProgress({
+      id: "00000000-0000-4000-8000-000000000001",
+      status: "running",
+      progress: 62,
+      stage: "web-search",
+      label: "中英双路检索",
+      detail: "英文检索完成 · 4 条",
+      startedAt: 1_000,
+      updatedAt: 6_000,
+      elapsedMs: 5_000,
+      stats: { directItems: 7, webItems: 4, sourcesCompleted: 2, sourcesTotal: 2 },
+      events: [{
+        id: 1, progress: 62, stage: "web-search", label: "中英双路检索",
+        detail: "英文检索完成 · 4 条", at: 6_000,
+      }],
+    });
+    expect(root.querySelector(".news-progress-percent")?.textContent).toBe("62%");
+    expect(root.querySelector(".news-progress-track")?.getAttribute("aria-valuenow")).toBe("62");
+    expect(root.querySelector(".news-progress-detail")?.textContent).toContain("英文检索完成");
+    expect(root.querySelector(".metric-direct")?.textContent).toBe("7");
+    expect(root.querySelector(".news-progress-events")?.textContent).toContain("中英双路检索");
   });
 
   it("把时间线标题和日期当作纯文本与属性处理", () => {
@@ -393,22 +384,12 @@ describe("liang slider app", () => {
     }]);
 
     const button = root.querySelector<HTMLButtonElement>(".timeline-node")!;
-    expect(root.querySelector("script, img")).toBeNull();
+    expect(root.querySelector(".timeline-track script, .timeline-track img")).toBeNull();
     expect(button.dataset.date).toBe(maliciousDate);
     expect(button.dataset.title).toBe(maliciousTitle);
     expect(button.getAttribute("aria-label")).toBe(`${maliciousDate}: ${maliciousTitle}`);
     expect(button.textContent).toContain(maliciousDate.slice(5));
     button.click();
     expect(selected).toEqual([maliciousDate]);
-  });
-});
-
-describe("formatVoteCount", () => {
-  it("uses compact K, M, and B suffixes for large vote counts", () => {
-    expect(formatVoteCount(999)).toBe("999");
-    expect(formatVoteCount(1_100)).toBe("1.1K");
-    expect(formatVoteCount(10_000)).toBe("10K");
-    expect(formatVoteCount(1_100_000)).toBe("1.1M");
-    expect(formatVoteCount(1_000_000_000)).toBe("1B");
   });
 });

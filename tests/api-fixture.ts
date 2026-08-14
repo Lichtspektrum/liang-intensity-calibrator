@@ -3,7 +3,7 @@ import type { Page, Request, Route } from "@playwright/test";
 export const APP_PATH = "/liang-intensity-calibrator/";
 export const API_ORIGIN = "http://127.0.0.1:8787";
 export const PAGE_ORIGIN = "http://127.0.0.1:5173";
-export const VOTE_STORAGE_KEY = "liang-slider:vote:v3";
+export const MANUAL_STORAGE_KEY = "liang-slider:manual-position:v1";
 
 export const INITIAL_SCORE = {
   score: 2.5,
@@ -21,6 +21,8 @@ type EndpointFailure = "abort" | 503;
 interface ApiRouteOptions {
   scoreFailure?: EndpointFailure;
   voteFailure?: EndpointFailure;
+  newsFailure?: EndpointFailure;
+  chatFailure?: EndpointFailure;
 }
 
 export interface ApiRouteLog {
@@ -28,6 +30,8 @@ export interface ApiRouteLog {
   timelineRequests: Request[];
   voteRequests: Request[];
   preflightRequests: Request[];
+  newsRequests: Request[];
+  chatRequests: Request[];
 }
 
 const corsHeaders = {
@@ -36,6 +40,50 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "Content-Type",
   Vary: "Origin",
 };
+
+const NEWS_JOB_ID = "00000000-0000-4000-8000-000000000014";
+const NEWS_RESULT = {
+  date: "2026-08-14",
+  score: 9,
+  stage: "梁神",
+  headline: "开放与效率成为今天的主信号",
+  rationale: "两条高可信新闻同时指向开放模型和更低推理成本。",
+  dimensions: { originality: 0.7, openness: 0.9, efficiency: 0.8, intelligence: 0.4, restraint: 0.2 },
+  quote: { id: "efficiency", dimension: "efficiency", text: "我们会优先考虑成本效率。", timestamp: "02:21:31" },
+  quoteSource: "https://example.com/original",
+  transcriptSource: "https://example.com/transcript",
+  sourceCaveat: "未经本人确认。",
+  items: [{
+    id: "news-1", title: "Open model release", summaryZh: "一个开放模型降低了推理成本。",
+    url: "https://example.com/news", source: "Official release", publishedAt: "2026-08-14T02:00:00Z", tags: ["开源", "效率"],
+  }],
+  collectedAt: Date.now(),
+};
+
+function newsJob(status: "running" | "completed") {
+  const completed = status === "completed";
+  return {
+    id: NEWS_JOB_ID,
+    status,
+    progress: completed ? 100 : 42,
+    stage: completed ? "complete" : "web-search",
+    label: completed ? "今日校准完成" : "中英双路检索",
+    detail: completed ? "已保存 1 条新闻与匹配句子" : "中文检索完成 · 1 条",
+    startedAt: Date.now() - 1_000,
+    updatedAt: Date.now(),
+    elapsedMs: completed ? 1_000 : 250,
+    stats: { directItems: 1, webItems: completed ? 1 : 0, uniqueItems: completed ? 1 : undefined },
+    events: [{
+      id: 1,
+      progress: completed ? 100 : 42,
+      stage: completed ? "complete" : "web-search",
+      label: completed ? "今日校准完成" : "中英双路检索",
+      detail: completed ? "已保存 1 条新闻与匹配句子" : "中文检索完成 · 1 条",
+      at: Date.now(),
+    }],
+    ...(completed ? { result: NEWS_RESULT } : {}),
+  };
+}
 
 function voteScore(position: number) {
   return {
@@ -82,6 +130,8 @@ export async function installApiRoutes(
     timelineRequests: [],
     voteRequests: [],
     preflightRequests: [],
+    newsRequests: [],
+    chatRequests: [],
   };
 
   await page.route(`${API_ORIGIN}/api/**`, async (route) => {
@@ -130,8 +180,52 @@ export async function installApiRoutes(
         body: JSON.stringify({
           accepted: true,
           userPosition: body.position,
-          nextVoteAt: Date.now() + 3 * 60 * 60 * 1000,
+          nextVoteAt: 0,
           ...voteScore(body.position),
+        }),
+      });
+      return;
+    }
+
+    if (pathname === "/api/news/jobs" && request.method() === "POST") {
+      log.newsRequests.push(request);
+      if (options.newsFailure) {
+        await failRoute(route, options.newsFailure);
+        return;
+      }
+      await route.fulfill({
+        headers: corsHeaders,
+        contentType: "application/json",
+        body: JSON.stringify(newsJob("running")),
+      });
+      return;
+    }
+
+    if (pathname === `/api/news/jobs/${NEWS_JOB_ID}`) {
+      await route.fulfill({
+        headers: corsHeaders,
+        contentType: "application/json",
+        body: JSON.stringify(newsJob("completed")),
+      });
+      return;
+    }
+
+    if (pathname === "/api/chat") {
+      log.chatRequests.push(request);
+      if (options.chatFailure) {
+        await failRoute(route, options.chatFailure);
+        return;
+      }
+      await route.fulfill({
+        headers: corsHeaders,
+        contentType: "application/json",
+        body: JSON.stringify({
+          score: 6,
+          stage: "梁圣",
+          answer: "我们可以先看真正的技术瓶颈，再决定要不要扩大产品线。",
+          calibrationSummary: "这段输入偏向主线意识，但还缺少成本约束。",
+          dimensions: { originality: 0.4, openness: 0.2, efficiency: 0.2, intelligence: 0.7, restraint: 0.5 },
+          disclaimer: "基于公开材料的模拟，不代表本人。",
         }),
       });
       return;

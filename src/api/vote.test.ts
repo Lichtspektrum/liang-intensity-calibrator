@@ -149,12 +149,12 @@ function voteRequest(
   body: unknown,
   headers: Record<string, string> = {},
 ): Request {
-  return new Request("https://liang-votes.example.workers.dev/api/vote", {
+  return new Request("https://liang-votes.example.com/api/vote", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
       Origin: ORIGIN,
-      "CF-Connecting-IP": "203.0.113.8",
+      "X-Client-IP": "203.0.113.8",
       ...headers,
     },
     body: typeof body === "string" ? body : JSON.stringify(body),
@@ -185,7 +185,7 @@ describe("persistent ballots", () => {
     await expect(responseJson(response)).resolves.toEqual({
       accepted: true,
       userPosition: 6,
-      nextVoteAt: NOW + VOTE_COOLDOWN_MS,
+      nextVoteAt: 0,
       score: 6,
       stage: "梁圣",
       voterCount: 1,
@@ -207,7 +207,7 @@ describe("persistent ballots", () => {
     expect(JSON.stringify([...rows.values()])).not.toContain("203.0.113.8");
   });
 
-  it("returns the saved ballot and fixed nextVoteAt during cooldown without writing", async () => {
+  it("updates a saved ballot immediately without a cooldown", async () => {
     vi.spyOn(Date, "now").mockReturnValue(NOW);
     const voterHash = await hmacIdentifier(SECRET, "voter:browser-fingerprint");
     const ipHash = await hmacIdentifier(SECRET, "ip:203.0.113.8");
@@ -225,25 +225,24 @@ describe("persistent ballots", () => {
       env,
     );
 
-    expect(response.status).toBe(429);
+    expect(response.status).toBe(200);
     await expect(responseJson(response)).resolves.toEqual({
-      accepted: false,
-      reason: "cooldown",
-      userPosition: -4,
-      nextVoteAt: updatedAt + VOTE_COOLDOWN_MS,
-      score: -4,
-      stage: "牢梁",
+      accepted: true,
+      userPosition: 12,
+      nextVoteAt: 0,
+      score: 12,
+      stage: "梁神",
       voterCount: 1,
-      positiveCount: 0,
-      negativeCount: 1,
+      positiveCount: 1,
+      negativeCount: 0,
       neutralCount: 0,
-      positivePoints: 0,
-      negativePoints: -4,
+      positivePoints: 12,
+      negativePoints: 0,
     });
-    expect(writes).toEqual([]);
+    expect(writes).toHaveLength(1);
   });
 
-  it("updates the same voter after three hours while preserving created_at", async () => {
+  it("updates the same voter freely while preserving created_at", async () => {
     vi.spyOn(Date, "now").mockReturnValue(NOW);
     const voterHash = await hmacIdentifier(SECRET, "voter:browser-fingerprint");
     const oldIpHash = await hmacIdentifier(SECRET, "ip:198.51.100.1");
@@ -272,17 +271,16 @@ describe("persistent ballots", () => {
     });
     expect(writes).toHaveLength(1);
     expect(writes[0]?.sql).toContain("UPDATE voters");
-    expect(writes[0]?.sql).toContain("updated_at <= ?");
+    expect(writes[0]?.sql).not.toContain("updated_at <= ?");
     expect(writes[0]?.values).toEqual([
       9,
       NOW,
       voterHash,
-      NOW - VOTE_COOLDOWN_MS,
     ]);
     await expect(responseJson(response)).resolves.toMatchObject({
       accepted: true,
       userPosition: 9,
-      nextVoteAt: NOW + VOTE_COOLDOWN_MS,
+      nextVoteAt: 0,
       voterCount: 1,
       score: 9,
     });
@@ -313,7 +311,7 @@ describe("persistent ballots", () => {
     const newIdentityResponse = await handlePostVote(
       voteRequest(
         { position: 3, fingerprint: "another-fingerprint" },
-        { "CF-Connecting-IP": creationIp },
+        { "X-Client-IP": creationIp },
       ),
       env,
     );
@@ -327,7 +325,7 @@ describe("persistent ballots", () => {
     });
   });
 
-  it("returns cooldown when a competing update wins the conditional write", async () => {
+  it("lets the latest submission win a competing update", async () => {
     vi.spyOn(Date, "now").mockReturnValue(NOW);
     const voterHash = await hmacIdentifier(SECRET, "voter:browser-fingerprint");
     const ipHash = await hmacIdentifier(SECRET, "ip:203.0.113.8");
@@ -358,14 +356,13 @@ describe("persistent ballots", () => {
       env,
     );
 
-    expect(response.status).toBe(429);
+    expect(response.status).toBe(200);
     expect(writes).toHaveLength(1);
-    expect(rows.get(voterHash)?.position).toBe(11);
+    expect(rows.get(voterHash)?.position).toBe(-12);
     await expect(responseJson(response)).resolves.toMatchObject({
-      accepted: false,
-      reason: "cooldown",
-      userPosition: 11,
-      nextVoteAt: NOW + VOTE_COOLDOWN_MS,
+      accepted: true,
+      userPosition: -12,
+      nextVoteAt: 0,
     });
   });
 });
@@ -456,7 +453,7 @@ describe("new-identity rate limiting", () => {
     ]);
   });
 
-  it("returns cooldown when the same new fingerprint wins a competing insert", async () => {
+  it("updates the same fingerprint when a competing insert wins", async () => {
     vi.spyOn(Date, "now").mockReturnValue(NOW);
     const voterHash = await hmacIdentifier(SECRET, "voter:browser-fingerprint");
     const ipHash = await hmacIdentifier(SECRET, "ip:203.0.113.8");
@@ -480,14 +477,13 @@ describe("new-identity rate limiting", () => {
       env,
     );
 
-    expect(response.status).toBe(429);
+    expect(response.status).toBe(200);
     expect(rows.size).toBe(1);
-    expect(rows.get(voterHash)?.position).toBe(4);
+    expect(rows.get(voterHash)?.position).toBe(12);
     await expect(responseJson(response)).resolves.toMatchObject({
-      accepted: false,
-      reason: "cooldown",
-      userPosition: 4,
-      nextVoteAt: NOW + VOTE_COOLDOWN_MS,
+      accepted: true,
+      userPosition: 12,
+      nextVoteAt: 0,
     });
   });
 
@@ -560,7 +556,7 @@ describe("vote validation", () => {
     ["fractional position", { position: 1.5, fingerprint: "valid-fingerprint" }, "invalid_position"],
     ["out-of-range position", { position: 16, fingerprint: "valid-fingerprint" }, "invalid_position"],
     ["short fingerprint", { position: 1, fingerprint: "short" }, "invalid_fingerprint"],
-  ])("rejects %s before touching D1", async (_label, body, reason) => {
+  ])("rejects %s before touching the database", async (_label, body, reason) => {
     const { env, prepared, writes } = createVoteEnv();
 
     const response = await handlePostVote(voteRequest(body), env);
@@ -576,7 +572,7 @@ describe("vote validation", () => {
     ["unlisted Origin", { Origin: "https://evil.example" }],
     ["Referer without Origin", { Origin: "", Referer: ORIGIN }],
     ["lookalike Origin", { Origin: `${ORIGIN}.evil.example` }],
-  ])("rejects %s before touching D1", async (_label, headers) => {
+  ])("rejects %s before touching the database", async (_label, headers) => {
     const { env, prepared, writes } = createVoteEnv();
 
     const response = await handlePostVote(
@@ -595,7 +591,7 @@ describe("vote validation", () => {
     ["empty", ""],
     ["31 ASCII bytes", "s".repeat(31)],
     ["31 UTF-8 bytes", `${"界".repeat(10)}a`],
-  ])("rejects a %s HMAC secret before touching D1", async (_label, secret) => {
+  ])("rejects a %s HMAC secret before touching the database", async (_label, secret) => {
     const { env, prepared, writes } = createVoteEnv();
     (env as { VOTER_HASH_SECRET?: string }).VOTER_HASH_SECRET = secret;
 
@@ -626,13 +622,13 @@ describe("vote validation", () => {
     expect(response.status).toBe(200);
   });
 
-  it("rejects a missing CF-Connecting-IP before touching D1", async () => {
+  it("rejects a missing client IP before touching the database", async () => {
     const { env, prepared, writes } = createVoteEnv();
 
     const response = await handlePostVote(
       voteRequest(
         { position: 1, fingerprint: "valid-fingerprint" },
-        { "CF-Connecting-IP": "" },
+        { "X-Client-IP": "" },
       ),
       env,
     );
@@ -678,7 +674,7 @@ function createSqliteEnv(database: DatabaseSync): Env {
   } as unknown as Env;
 }
 
-describe("D1-compatible SQLite integration", () => {
+describe("SQLite integration", () => {
   it("executes the migration and atomic insert/update conditions", async () => {
     const database = new DatabaseSync(":memory:");
     database.exec(readFileSync(new URL("../../migrations/0001_init.sql", import.meta.url), "utf8"));
@@ -690,7 +686,7 @@ describe("D1-compatible SQLite integration", () => {
         voteRequest({ position: -5, fingerprint: "sqlite-fingerprint" }),
         env,
       );
-      const cooldown = await handlePostVote(
+      const immediateUpdate = await handlePostVote(
         voteRequest({ position: 8, fingerprint: "sqlite-fingerprint" }),
         env,
       );
@@ -698,13 +694,13 @@ describe("D1-compatible SQLite integration", () => {
       const update = await handlePostVote(
         voteRequest(
           { position: 8, fingerprint: "sqlite-fingerprint" },
-          { "CF-Connecting-IP": "198.51.100.44" },
+          { "X-Client-IP": "198.51.100.44" },
         ),
         env,
       );
 
       expect(first.status).toBe(200);
-      expect(cooldown.status).toBe(429);
+      expect(immediateUpdate.status).toBe(200);
       expect(update.status).toBe(200);
       const stored = database.prepare(
         "SELECT ip_hash, position, created_at, updated_at FROM voters",
@@ -722,7 +718,7 @@ describe("D1-compatible SQLite integration", () => {
         const response = await handlePostVote(
           voteRequest(
             { position: index, fingerprint: `sqlite-new-${index}` },
-            { "CF-Connecting-IP": sharedIp },
+            { "X-Client-IP": sharedIp },
           ),
           env,
         );
@@ -731,7 +727,7 @@ describe("D1-compatible SQLite integration", () => {
       const limited = await handlePostVote(
         voteRequest(
           { position: 10, fingerprint: "sqlite-new-sixth" },
-          { "CF-Connecting-IP": sharedIp },
+          { "X-Client-IP": sharedIp },
         ),
         env,
       );

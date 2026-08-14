@@ -1,6 +1,14 @@
-import NumberFlow from "number-flow";
+import DOMPurify from "dompurify";
+import { marked } from "marked";
 
-import type { ScoreData, TimelineEventData } from "./api";
+import type {
+  ChatData,
+  NewsCalibrationData,
+  NewsItemData,
+  NewsJobData,
+  ScoreData,
+  TimelineEventData,
+} from "./api";
 import {
   MAX_SCORE,
   MIN_SCORE,
@@ -24,25 +32,30 @@ export interface AppController {
   setReady(): void;
   setError(message: string): void;
   setCommunityUnavailable(): void;
-  setCooldown(remainingMs: number): void;
   setVoteError(): void;
   restoreVote(position: number): void;
   setCommunityScore(score: ScoreData): void;
   setUserVotePosition(position: number | null): void;
-  setVotingState(state: {
-    positiveCount: number;
-    negativeCount: number;
-    neutralCount: number;
-    positivePoints: number;
-    negativePoints: number;
-  }): void;
   setTimelineEvents(events: TimelineEventData[]): void;
+  setAppMode(mode: AppMode): void;
+  setNewsLoading(): void;
+  setNewsProgress(progress: NewsJobData): void;
+  setNewsResult(result: NewsCalibrationData): void;
+  setNewsError(message: string): void;
+  setChatLoading(message: string): void;
+  setChatResult(result: ChatData): void;
+  setChatError(message: string): void;
   enterHistoryMode(date: string, score: number): void;
   exitHistoryMode(): void;
   onVote?: (position: number) => void;
   onHistorySelect?: (date: string) => void;
   onHistoryExit?: () => void;
+  onModeChange?: (mode: AppMode) => void;
+  onNewsRefresh?: () => void;
+  onChatSubmit?: (message: string) => void;
 }
+
+export type AppMode = "manual" | "news" | "chat";
 
 export type ScoreChangeHandler = (score: number) => void;
 export type VoteHandler = (position: number) => void;
@@ -75,24 +88,34 @@ function createTimelinePanel(): string {
   `;
 }
 
-export function formatVoteCount(count: number): string {
-  if (count < 1_000) return String(count);
-
-  const units = [
-    { value: 1_000_000_000, suffix: "B" },
-    { value: 1_000_000, suffix: "M" },
-    { value: 1_000, suffix: "K" },
-  ];
-  const unit = units.find(({ value }) => count >= value)!;
-  const compact = count / unit.value;
-  const digits = compact < 10 ? 1 : 0;
-  return `${compact.toFixed(digits).replace(/\.0$/, "")}${unit.suffix}`;
-}
-
 function formatStatusScore(score: number): string {
   const rounded = Math.round(clampScore(score) * 10) / 10;
   if (Object.is(rounded, -0) || rounded === 0) return "0";
   return `${rounded > 0 ? "+" : ""}${rounded}`;
+}
+
+function markdownText(value: string): string {
+  return value.replace(/([\\`*_{}\[\]()#+.!|<>-])/gu, "\\$1");
+}
+
+export function newsItemsMarkdown(items: NewsItemData[]): string {
+  return items.slice(0, 12).map((item) => [
+    `### [${markdownText(item.title)}](${item.url})`,
+    `_${markdownText(item.source)} · ${markdownText(item.tags.join(" / ") || "AI")}_`,
+    markdownText(item.summaryZh),
+  ].join("\n\n")).join("\n\n---\n\n");
+}
+
+function renderSafeNewsMarkdown(container: HTMLElement, items: NewsItemData[]): void {
+  const html = marked.parse(newsItemsMarkdown(items), { async: false }) as string;
+  container.innerHTML = DOMPurify.sanitize(html, {
+    ALLOWED_TAGS: ["h3", "p", "a", "em", "strong", "code", "hr", "ul", "ol", "li", "br"],
+    ALLOWED_ATTR: ["href", "title"],
+  });
+  container.querySelectorAll<HTMLAnchorElement>("a").forEach((link) => {
+    link.target = "_blank";
+    link.rel = "noreferrer";
+  });
 }
 
 export function mountApp(
@@ -135,35 +158,105 @@ export function mountApp(
         </section>
 
         <section class="control-panel" aria-label="梁系强度控制">
-          <div class="slider-vote-layout" aria-label="梁氏浓度投票">
-            <output class="vote-total vote-total--down" aria-label="低强度累计票值">
-              <number-flow class="vote-total-flow" value="0"></number-flow>
-            </output>
+          <nav class="mode-switch" aria-label="校准模式">
+            <button class="mode-btn is-active" type="button" data-mode="manual">手动</button>
+            <button class="mode-btn" type="button" data-mode="news">今日 AI 新闻</button>
+            <button class="mode-btn" type="button" data-mode="chat">梁式对话</button>
+          </nav>
+          <div class="slider-layout" aria-label="梁系强度变阻器">
             <div class="range-control">
-              <p class="vote-status" role="status" aria-live="polite">红色圆点是你的选择，灰色圆点是社区平均分</p>
-              <div class="range-wrap">
+              <p class="calibration-status" role="status" aria-live="polite">拖动滑片即可连续校准，当前位置会保存在本机</p>
+              <div class="rheostat-scale">
                 <div class="tick-track">${createTicks()}</div>
-                <span class="community-ghost-thumb" aria-label="社区当前分值" title="社区当前分值" hidden></span>
-                <input
-                  id="strength-slider"
-                  class="strength-slider"
-                  type="range"
-                  min="-15"
-                  max="15"
-                  step="0.01"
-                  value="0"
-                  aria-label="梁系强度"
-                  aria-valuetext="梁子，强度 00，范围 -15 到 +15"
-                  disabled
-                />
+                <ol class="stage-markers">${createStageMarkers()}</ol>
               </div>
-              <ol class="stage-markers">${createStageMarkers()}</ol>
+              <div class="range-wrap">
+                <img class="rheostat-chassis" src="${import.meta.env.BASE_URL}assets/rheostat-design-b-chassis.png" alt="" aria-hidden="true" />
+                <div class="rheostat-rail-overlay">
+                  <span class="rheostat-wiper" aria-hidden="true"></span>
+                  <input
+                    id="strength-slider"
+                    class="strength-slider"
+                    type="range"
+                    min="-15"
+                    max="15"
+                    step="0.01"
+                    value="0"
+                    aria-label="梁系强度"
+                    aria-valuetext="梁子，强度 00，范围 -15 到 +15"
+                    disabled
+                  />
+                </div>
+              </div>
             </div>
-            <output class="vote-total vote-total--up" aria-label="高强度累计票值">
-              <number-flow class="vote-total-flow" value="0"></number-flow>
-            </output>
           </div>
-          <p class="drag-hint"><span aria-hidden="true">←</span> 拖动红色圆点，松开即提交。−15 最弱，0 居中，+15 最强；每 3 小时可修改一次。 <span aria-hidden="true">→</span></p>
+          <p class="drag-hint"><span aria-hidden="true">←</span> 拖动滑片连续校准。−15 最弱，0 居中，+15 最强；松开后记住当前位置。 <span aria-hidden="true">→</span></p>
+          <section class="mode-panel news-panel" aria-live="polite" hidden>
+            <div class="mode-panel-header">
+              <div>
+                <span class="mode-kicker">NEWS MODE</span>
+                <h2>今天的 AI，梁到哪了？</h2>
+              </div>
+              <button class="news-refresh-btn" type="button">重新读取</button>
+            </div>
+            <p class="news-status">准备读取今天发布的 AI 新闻。</p>
+            <section class="news-progress" aria-label="新闻采集进度" hidden>
+              <div class="news-progress-heading">
+                <div>
+                  <span class="news-progress-kicker">LIVE PIPELINE</span>
+                  <strong class="news-progress-label">建立今日采集任务</strong>
+                </div>
+                <output class="news-progress-percent">0%</output>
+              </div>
+              <div class="news-progress-track" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+                <span class="news-progress-fill"></span>
+                <span class="news-progress-glow" aria-hidden="true"></span>
+              </div>
+              <p class="news-progress-detail">准备可信源、日期边界与梁文锋分析 skill</p>
+              <div class="news-progress-metrics" aria-label="采集统计">
+                <span><b class="metric-sources">0/7</b> 可信源</span>
+                <span><b class="metric-direct">0</b> 直连</span>
+                <span><b class="metric-web">0</b> 搜索</span>
+                <span><b class="metric-unique">0</b> 有效</span>
+                <span><b class="metric-elapsed">0s</b> 已用时</span>
+              </div>
+              <ol class="news-progress-events" aria-label="详细采集步骤"></ol>
+            </section>
+            <div class="news-result" hidden>
+              <section class="news-analysis">
+                <span class="news-column-kicker">LIANG CALIBRATION</span>
+                <h3 class="news-headline"></h3>
+                <p class="news-rationale"></p>
+                <blockquote class="news-quote"></blockquote>
+                <p class="news-caveat"></p>
+              </section>
+              <aside class="news-feed" aria-label="采集到的 AI 新闻">
+                <div class="news-feed-heading">
+                  <span class="news-column-kicker">GATHERED NEWS · MARKDOWN</span>
+                  <b class="news-feed-count"></b>
+                </div>
+                <div class="news-markdown"></div>
+              </aside>
+            </div>
+          </section>
+          <section class="mode-panel chat-panel" hidden>
+            <div class="mode-panel-header">
+              <div>
+                <span class="mode-kicker">CHAT MODE</span>
+                <h2>输入一个问题或判断</h2>
+              </div>
+            </div>
+            <div class="chat-thread" role="log" aria-label="连续梁式对话" aria-live="polite">
+              <p class="chat-empty">对话会在本页持续保留，后续问题将结合上文回答。</p>
+            </div>
+            <p class="chat-status" role="status" aria-live="polite"></p>
+            <form class="chat-form">
+              <label for="chat-input">同时校准这段话，并用公开材料提炼的梁式框架回答</label>
+              <textarea id="chat-input" maxlength="2000" rows="3" placeholder="例如：我们应该先追求用户规模，还是继续投入底层模型？" required></textarea>
+              <p class="chat-privacy">由本项目 npm 安装的 OpenCode CLI 免费模型处理，无需模型 key。免费期内输入可能被用于改进模型，请勿提交隐私或机密信息。</p>
+              <button class="chat-submit-btn" type="submit">校准并回答</button>
+            </form>
+          </section>
         </section>
 
         <footer class="footer-note">
@@ -188,74 +281,72 @@ export function mountApp(
   const ticks = Array.from(root.querySelectorAll<HTMLElement>(".tick"));
   const markers = Array.from(root.querySelectorAll<HTMLElement>(".stage-marker"));
 
-  const voteCountUp = root.querySelector<NumberFlow>(".vote-total--up number-flow")!;
-  const voteCountDown = root.querySelector<NumberFlow>(".vote-total--down number-flow")!;
-  const voteStatus = root.querySelector<HTMLElement>(".vote-status")!;
-  const communityGhostThumb = root.querySelector<HTMLElement>(".community-ghost-thumb")!;
+  const calibrationStatus = root.querySelector<HTMLElement>(".calibration-status")!;
 
   const timelineTrack = root.querySelector<HTMLElement>(".timeline-track")!;
   const timelineReturnBtn = root.querySelector<HTMLButtonElement>(".timeline-return-btn")!;
   const timelineHeader = root.querySelector<HTMLElement>(".timeline-header")!;
+  const modeButtons = Array.from(root.querySelectorAll<HTMLButtonElement>(".mode-btn"));
+  const newsPanel = root.querySelector<HTMLElement>(".news-panel")!;
+  const newsStatus = root.querySelector<HTMLElement>(".news-status")!;
+  const newsResult = root.querySelector<HTMLElement>(".news-result")!;
+  const newsHeadline = root.querySelector<HTMLElement>(".news-headline")!;
+  const newsRationale = root.querySelector<HTMLElement>(".news-rationale")!;
+  const newsQuote = root.querySelector<HTMLElement>(".news-quote")!;
+  const newsCaveat = root.querySelector<HTMLElement>(".news-caveat")!;
+  const newsMarkdown = root.querySelector<HTMLElement>(".news-markdown")!;
+  const newsFeedCount = root.querySelector<HTMLElement>(".news-feed-count")!;
+  const newsProgress = root.querySelector<HTMLElement>(".news-progress")!;
+  const newsProgressLabel = root.querySelector<HTMLElement>(".news-progress-label")!;
+  const newsProgressPercent = root.querySelector<HTMLOutputElement>(".news-progress-percent")!;
+  const newsProgressTrack = root.querySelector<HTMLElement>(".news-progress-track")!;
+  const newsProgressFill = root.querySelector<HTMLElement>(".news-progress-fill")!;
+  const newsProgressDetail = root.querySelector<HTMLElement>(".news-progress-detail")!;
+  const newsProgressEvents = root.querySelector<HTMLOListElement>(".news-progress-events")!;
+  const metricSources = root.querySelector<HTMLElement>(".metric-sources")!;
+  const metricDirect = root.querySelector<HTMLElement>(".metric-direct")!;
+  const metricWeb = root.querySelector<HTMLElement>(".metric-web")!;
+  const metricUnique = root.querySelector<HTMLElement>(".metric-unique")!;
+  const metricElapsed = root.querySelector<HTMLElement>(".metric-elapsed")!;
+  const newsRefreshButton = root.querySelector<HTMLButtonElement>(".news-refresh-btn")!;
+  const chatPanel = root.querySelector<HTMLElement>(".chat-panel")!;
+  const chatForm = root.querySelector<HTMLFormElement>(".chat-form")!;
+  const chatInput = root.querySelector<HTMLTextAreaElement>("#chat-input")!;
+  const chatSubmitButton = root.querySelector<HTMLButtonElement>(".chat-submit-btn")!;
+  const chatStatus = root.querySelector<HTMLElement>(".chat-status")!;
+  const chatThread = root.querySelector<HTMLElement>(".chat-thread")!;
 
   let previewPosition = 0;
   let displayPosition = 0;
   let currentMode: "idle" | "previewing-vote" | "viewing-history" = "idle";
+  let appMode: AppMode = "manual";
+  let mediaReady = false;
   let communityLevel = 0;
   let userVotePosition: number | null = null;
   let communityStatus: "unknown" | "available" | "unavailable" = "unknown";
-  let actionStatus: "normal" | "cooldown" | "error" = "normal";
-  let cooldownRemainingMs = 0;
+  let actionStatus: "normal" | "error" = "normal";
 
   const renderVoteStatus = (): void => {
+    if (appMode === "news") {
+      calibrationStatus.dataset.state = "automatic";
+      calibrationStatus.textContent = "由今日 AI 新闻自动校准，变阻器将跟随分析结果";
+      return;
+    }
+
+    if (appMode === "chat") {
+      calibrationStatus.dataset.state = "automatic";
+      calibrationStatus.textContent = "由当前对话自动校准，变阻器将平滑移动到分析结果";
+      return;
+    }
+
     if (actionStatus === "error") {
-      voteStatus.dataset.state = "error";
-      voteStatus.textContent = "提交失败，请稍后重试";
+      calibrationStatus.dataset.state = "error";
+      calibrationStatus.textContent = "在线状态暂不可用，仍可继续手动校准";
       return;
     }
 
-    if (actionStatus === "cooldown") {
-      voteStatus.dataset.state = "cooldown";
-      const totalMinutes = Math.ceil(cooldownRemainingMs / 60_000);
-      const hours = Math.floor(totalMinutes / 60);
-      const minutes = totalMinutes % 60;
-      const duration = hours > 0 && minutes > 0
-        ? `${hours} 小时 ${minutes} 分`
-        : hours > 0
-          ? `${hours} 小时`
-          : `${minutes} 分`;
-      voteStatus.textContent = `还需 ${duration}才能修改投票`;
-      return;
-    }
-
-    if (communityStatus === "unavailable") {
-      voteStatus.dataset.state = "community-unavailable";
-      voteStatus.textContent = "社区数据暂时无法加载";
-      return;
-    }
-
-    voteStatus.dataset.state = "normal";
-    if (userVotePosition === null) {
-      voteStatus.textContent = "红色圆点是你的选择，灰色圆点是社区平均分";
-      return;
-    }
-
-    if (communityStatus === "unknown") {
-      voteStatus.textContent = `你的投票：${formatStatusScore(userVotePosition)}　社区平均加载中`;
-      return;
-    }
-
-    voteStatus.textContent =
-      `你的投票：${formatStatusScore(userVotePosition)}`
-      + `　社区平均：${formatStatusScore(communityLevel)}`;
-  };
-
-  const updateVotePoints = (element: NumberFlow, value: number): void => {
-    element.setAttribute("value", String(value));
-    if (typeof element.update === "function") {
-      element.update(value);
-      return;
-    }
-    element.textContent = formatVoteCount(value);
+    calibrationStatus.dataset.state = "normal";
+    calibrationStatus.textContent = "拖动滑片即可连续校准，当前位置会保存在本机";
   };
 
   const updateVisuals = (score: number) => {
@@ -272,6 +363,7 @@ export function mountApp(
     experience.dataset.stage = String(state.stageIndex);
     experience.style.setProperty("--strength", String(state.trackProgress));
     experience.style.setProperty("--stage-progress", String(state.stageProgress));
+    experience.style.setProperty("--slider-position", `${state.trackProgress * 100}%`);
 
     ticks.forEach((tick, index) => {
       tick.classList.toggle("is-active", index <= state.frameIndex);
@@ -316,6 +408,28 @@ export function mountApp(
     controller.onHistoryExit?.();
   });
 
+  modeButtons.forEach((button) => {
+    button.addEventListener("click", () => {
+      const mode = button.dataset.mode as AppMode;
+      const controller = (root as HTMLElement & { _controller?: AppController })._controller;
+      controller?.setAppMode(mode);
+      controller?.onModeChange?.(mode);
+    });
+  });
+
+  newsRefreshButton.addEventListener("click", () => {
+    const controller = (root as HTMLElement & { _controller?: AppController })._controller;
+    controller?.onNewsRefresh?.();
+  });
+
+  chatForm.addEventListener("submit", (event) => {
+    event.preventDefault();
+    const message = chatInput.value.trim();
+    if (!message) return;
+    const controller = (root as HTMLElement & { _controller?: AppController })._controller;
+    controller?.onChatSubmit?.(message);
+  });
+
   setScore(0);
 
   const controller: AppController = {
@@ -333,7 +447,8 @@ export function mountApp(
       loadState.hidden = true;
     },
     setReady() {
-      slider.disabled = false;
+      mediaReady = true;
+      slider.disabled = appMode !== "manual" || currentMode === "viewing-history";
     },
     setError(message) {
       slider.disabled = true;
@@ -343,19 +458,7 @@ export function mountApp(
     },
     setCommunityUnavailable() {
       communityStatus = "unavailable";
-      communityGhostThumb.hidden = true;
-      renderVoteStatus();
-    },
-    setCooldown(remainingMs) {
-      if (remainingMs <= 0) {
-        actionStatus = "normal";
-        cooldownRemainingMs = 0;
-        renderVoteStatus();
-        return;
-      }
-
-      actionStatus = "cooldown";
-      cooldownRemainingMs = remainingMs;
+      actionStatus = "error";
       renderVoteStatus();
     },
     setVoteError() {
@@ -370,34 +473,14 @@ export function mountApp(
     setCommunityScore(scoreData) {
       communityLevel = scoreData.score;
       communityStatus = "available";
-      communityGhostThumb.hidden = false;
       renderVoteStatus();
-      const communityState = describeScore(communityLevel);
-      communityGhostThumb.style.setProperty(
-        "--community-position",
-        String(communityState.trackProgress * 100),
-      );
-      communityGhostThumb.setAttribute("aria-label", `社区当前分值 ${communityLevel.toFixed(2)}`);
       if (currentMode === "idle" && actionStatus === "normal") {
         setScore(userVotePosition ?? communityLevel);
       }
-      controller.setVotingState({
-        positiveCount: scoreData.positiveCount,
-        negativeCount: scoreData.negativeCount,
-        neutralCount: scoreData.neutralCount,
-        positivePoints: scoreData.positivePoints,
-        negativePoints: scoreData.negativePoints,
-      });
     },
     setUserVotePosition(position) {
       userVotePosition = position === null ? null : clampScore(position);
       renderVoteStatus();
-    },
-    setVotingState(state) {
-      updateVotePoints(voteCountUp, state.positivePoints);
-      updateVotePoints(voteCountDown, Math.abs(state.negativePoints));
-      voteCountUp.setAttribute("aria-label", `正向累计票值 ${state.positivePoints}`);
-      voteCountDown.setAttribute("aria-label", `负向累计票值 ${state.negativePoints}`);
     },
     setTimelineEvents(events) {
       const nodes = events.map((event) => {
@@ -420,6 +503,134 @@ export function mountApp(
       });
       timelineTrack.replaceChildren(...nodes);
     },
+    setAppMode(mode) {
+      appMode = mode;
+      experience.dataset.mode = mode;
+      modeButtons.forEach((button) => {
+        const active = button.dataset.mode === mode;
+        button.classList.toggle("is-active", active);
+        button.setAttribute("aria-pressed", String(active));
+      });
+      newsPanel.hidden = mode !== "news";
+      chatPanel.hidden = mode !== "chat";
+      slider.disabled = !mediaReady || mode !== "manual" || currentMode === "viewing-history";
+      if (mode === "manual" && currentMode !== "viewing-history") {
+        setScore(userVotePosition ?? communityLevel);
+      }
+      renderVoteStatus();
+    },
+    setNewsLoading() {
+      newsRefreshButton.disabled = true;
+      newsStatus.dataset.state = "loading";
+      newsStatus.textContent = "正在建立可核验的今日 AI 新闻视图…";
+      newsProgress.hidden = false;
+      newsProgress.dataset.state = "running";
+    },
+    setNewsProgress(job) {
+      newsProgress.hidden = false;
+      newsProgress.dataset.state = job.status;
+      newsProgress.style.setProperty("--news-progress", String(job.progress / 100));
+      newsProgressLabel.textContent = job.label;
+      newsProgressPercent.textContent = `${Math.round(job.progress)}%`;
+      newsProgressDetail.textContent = job.detail;
+      newsProgressTrack.setAttribute("aria-valuenow", String(Math.round(job.progress)));
+      newsProgressFill.style.width = `${job.progress}%`;
+      metricSources.textContent = `${job.stats.sourcesCompleted ?? 0}/${job.stats.sourcesTotal ?? 7}`;
+      metricDirect.textContent = String(job.stats.directItems ?? 0);
+      metricWeb.textContent = String(job.stats.webItems ?? 0);
+      metricUnique.textContent = String(job.stats.uniqueItems ?? 0);
+      metricElapsed.textContent = `${Math.max(0, Math.round(job.elapsedMs / 1_000))}s`;
+      const eventNodes = job.events.slice(-8).map((event, index, events) => {
+        const item = document.createElement("li");
+        const isLatest = index === events.length - 1;
+        item.className = isLatest && job.status === "running" ? "is-active" : "is-complete";
+        const dot = document.createElement("i");
+        dot.setAttribute("aria-hidden", "true");
+        const copy = document.createElement("div");
+        const label = document.createElement("strong");
+        label.textContent = event.label;
+        const detail = document.createElement("span");
+        detail.textContent = event.detail;
+        const percent = document.createElement("time");
+        percent.textContent = `${event.progress}%`;
+        copy.append(label, detail);
+        item.append(dot, copy, percent);
+        return item;
+      });
+      newsProgressEvents.replaceChildren(...eventNodes);
+    },
+    setNewsResult(result) {
+      newsRefreshButton.disabled = false;
+      newsStatus.dataset.state = "ready";
+      newsStatus.textContent = `${result.date} · ${result.items.length} 条有效信号`;
+      newsResult.hidden = false;
+      newsProgress.dataset.state = "completed";
+      newsHeadline.textContent = result.headline;
+      newsRationale.textContent = result.rationale;
+      newsQuote.replaceChildren();
+      const quoteLink = document.createElement("a");
+      quoteLink.href = result.quoteSource;
+      quoteLink.target = "_blank";
+      quoteLink.rel = "noreferrer";
+      quoteLink.textContent = `“${result.quote.text}”`;
+      const timestamp = document.createElement("small");
+      timestamp.textContent = ` 网传转写 ${result.quote.timestamp}`;
+      newsQuote.append(quoteLink, timestamp);
+      newsCaveat.replaceChildren(document.createTextNode(`${result.sourceCaveat} `));
+      const transcriptLink = document.createElement("a");
+      transcriptLink.href = result.transcriptSource;
+      transcriptLink.target = "_blank";
+      transcriptLink.rel = "noreferrer";
+      transcriptLink.textContent = "查看时间戳归档";
+      newsCaveat.append(transcriptLink);
+      newsFeedCount.textContent = `${result.items.length} 条`;
+      renderSafeNewsMarkdown(newsMarkdown, result.items);
+    },
+    setNewsError(message) {
+      newsRefreshButton.disabled = false;
+      newsStatus.dataset.state = "error";
+      newsStatus.textContent = message;
+      newsProgress.dataset.state = "failed";
+    },
+    setChatLoading(message) {
+      chatSubmitButton.disabled = true;
+      chatInput.disabled = true;
+      chatInput.value = "";
+      chatStatus.dataset.state = "loading";
+      chatStatus.textContent = "正在校准并组织回答…";
+      chatThread.querySelector(".chat-empty")?.remove();
+      const userTurn = document.createElement("article");
+      userTurn.className = "chat-turn chat-turn--user";
+      userTurn.textContent = message;
+      const pendingTurn = document.createElement("article");
+      pendingTurn.className = "chat-turn chat-turn--assistant is-pending";
+      pendingTurn.textContent = "正在思考…";
+      chatThread.append(userTurn, pendingTurn);
+      chatThread.scrollTop = chatThread.scrollHeight;
+    },
+    setChatResult(result) {
+      chatSubmitButton.disabled = false;
+      chatInput.disabled = false;
+      chatStatus.dataset.state = "ready";
+      chatStatus.textContent = `${result.stage} · ${formatStatusScore(result.score)}`;
+      chatThread.querySelector(".is-pending")?.remove();
+      const assistantTurn = document.createElement("article");
+      assistantTurn.className = "chat-turn chat-turn--assistant";
+      const answer = document.createElement("p");
+      answer.className = "chat-answer";
+      answer.textContent = result.answer;
+      assistantTurn.append(answer);
+      chatThread.append(assistantTurn);
+      chatThread.scrollTop = chatThread.scrollHeight;
+      chatInput.focus();
+    },
+    setChatError(message) {
+      chatSubmitButton.disabled = false;
+      chatInput.disabled = false;
+      chatThread.querySelector(".is-pending")?.remove();
+      chatStatus.dataset.state = "error";
+      chatStatus.textContent = message;
+    },
     enterHistoryMode(date, score) {
       currentMode = "viewing-history";
       setScore(score);
@@ -430,7 +641,7 @@ export function mountApp(
     },
     exitHistoryMode() {
       currentMode = "idle";
-      slider.disabled = false;
+      slider.disabled = !mediaReady || appMode !== "manual";
       timelineReturnBtn.hidden = true;
       experience.classList.remove("is-history-mode");
       timelineHeader.textContent = "时间线";

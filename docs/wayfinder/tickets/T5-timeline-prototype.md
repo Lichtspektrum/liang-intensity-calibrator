@@ -2,7 +2,7 @@
 
 **类型**: implemented
 **状态**: done
-**阻塞**: 无（但 T11 API 契约依赖时间线的数据需求）
+**阻塞**: 无
 
 ## Current Implementation
 
@@ -12,7 +12,7 @@
 - `.timeline-track` 渲染最近事件。
 - 点击事件会调用 `/api/timeline/:date`，然后进入历史回看模式。
 - 历史回看会把显示 level 切到该日期快照。
-- `.timeline-return-btn` 用于回到实时社区分值。
+- `.timeline-return-btn` 用于回到当前校准位置。
 - `isMajor` 事件会在 DOM class 上标记为大事件。
 
 ## Data Source

@@ -129,7 +129,7 @@ createServer(async (request, response) => {
     sendJson(response, {
       accepted: true,
       userPosition: position,
-      nextVoteAt: Date.now() + 3 * 60 * 60 * 1000,
+      nextVoteAt: 0,
       score: position,
       stage: stageFor(position),
       voterCount: 1,

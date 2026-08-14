@@ -17,15 +17,11 @@ const env = {
 } as Env;
 
 describe("voting limits", () => {
-  it("enforces a three-hour cooldown", () => {
-    expect(VOTE_COOLDOWN_MS).toBe(3 * 60 * 60 * 1000);
-    expect(getCooldownState(1_000, 1_000 + VOTE_COOLDOWN_MS - 1)).toEqual({
-      allowed: false,
-      nextVoteAt: 1_000 + VOTE_COOLDOWN_MS,
-    });
-    expect(getCooldownState(1_000, 1_000 + VOTE_COOLDOWN_MS)).toEqual({
+  it("keeps repeat voting permanently unlocked", () => {
+    expect(VOTE_COOLDOWN_MS).toBe(0);
+    expect(getCooldownState(1_000, 999)).toEqual({
       allowed: true,
-      nextVoteAt: 1_000 + VOTE_COOLDOWN_MS,
+      nextVoteAt: 1_000,
     });
   });
 

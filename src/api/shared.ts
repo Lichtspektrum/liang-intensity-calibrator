@@ -1,17 +1,21 @@
+import type { StructuredAiRunner } from "../ai-runtime";
+
 export interface Env {
-  DB: D1Database;
+  DB: AppDatabase;
+  AI_RUNNER?: StructuredAiRunner;
   VOTER_HASH_SECRET: string;
   ALLOWED_ORIGINS: string;
 }
 
-export const VOTE_COOLDOWN_MS = 3 * 60 * 60 * 1000;
+// Kept as a compatibility export for older clients and tests. Voting is unrestricted.
+export const VOTE_COOLDOWN_MS = 0;
 export const NEW_IDENTITIES_PER_IP_PER_DAY = 5;
 
 const BEIJING_OFFSET_MS = 8 * 60 * 60 * 1000;
 
 export function getCooldownState(updatedAt: number, now = Date.now()) {
-  const nextVoteAt = updatedAt + VOTE_COOLDOWN_MS;
-  return { allowed: now >= nextVoteAt, nextVoteAt };
+  void now;
+  return { allowed: true, nextVoteAt: updatedAt };
 }
 
 export async function hmacIdentifier(secret: string, value: string): Promise<string> {
@@ -114,8 +118,8 @@ export type VoteResponse =
       | "invalid_request";
   };
 
-export function todayInBeijing(): string {
-  return beijingDate(Date.now());
+export function todayInBeijing(now = Date.now()): string {
+  return beijingDate(now);
 }
 
 export function previousBeijingDate(now = Date.now()): string {

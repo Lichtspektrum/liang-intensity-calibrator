@@ -1,11 +1,10 @@
 .worktrees/
 node_modules/
-.dev.vars
+.env.local
+.data/
 dist/
-dist-worker/
 dist-pages/
 test-results/
 playwright-report/
-.wrangler/
 output/video-prototype/*
 !output/video-prototype/.gitkeep

@@ -1,33 +1,27 @@
-# [Wayfinder] 社区投票与每日趋势
+# [Wayfinder] 新闻校准与连续梁式对话
 
 ## Destination
 
-滑动变祖器允许访客在 -15 到 +15 之间投票。每个浏览器保留一张有效票，间隔 3 小时后可更新。社区分数是当前有效票的平均值，阴影圆点在主滑杆上显示它的位置。
+保留 -15 到 +15 的本机手动校准，并增加今日 AI 新闻自动校准和公开材料框架下的连续梁式对话。
 
 ## Current architecture
 
-- GitHub Pages 提供 HTML、CSS、JavaScript、首帧图和 WebM/MP4 视频。
-- Cloudflare Worker 只提供 `/api/score`、`/api/vote` 和 `/api/timeline`。
-- D1 保存投票人的 HMAC 标识、当前票和每日快照，不保存原始浏览器指纹或 IP。
-- Cron 每天记录一次社区分数，时间线最多返回最近 90 天。
-- 页面和 API 分开发布。Worker 仅允许配置中列出的精确 Origin 跨域访问。
-
-## Voting rules
-
-- 同一浏览器在 3 小时冷却期内仍可拖动预览，松手后回到已保存的投票。
-- 同一 IP 在滚动 24 小时内最多创建 5 个新投票身份。
-- API 不可用时，人像和滑杆仍可浏览；社区圆点隐藏，页面显示简短状态。
-- 页面加载时读取一次最新社区分数，没有 WebSocket 实时推送。
+- GitHub Pages 可提供 HTML、CSS、JavaScript、首帧图和视频。
+- 普通 Node 服务提供新闻、对话和历史数据接口。
+- Node API 仅在收到 AI 请求时启动本地 `opencode/deepseek-v4-flash-free` CLI，任务结束后进程退出，不需要模型 key。
+- 新闻采集并行执行 Hacker News、arXiv、官方 GitHub releases，以及中英双路 `websearch → webfetch`。
+- OpenCode 运行目录只允许 Liang skill、网页搜索和抓取。
+- SQLite 保存每日快照、新闻缓存和按哈希 IP 计数的聊天限流桶。
+- 本地调度器定期更新新闻并记录每日快照。
 
 ## Decisions
 
-- 无 SSR：GitHub Pages 直接输出静态首页。
-- 无对象存储：媒体文件随 Pages artifact 发布。
-- 无新闻数据或 AI 分析：时间线只显示 D1 中的每日分数快照。
-- Worker 由手动 GitHub Actions 工作流发布，Pages 在 `main` 更新后发布。
+- 页面与 API 可以分开发布；API 只允许配置中列出的精确 Origin。
+- 新闻与聊天只使用 OpenCode CLI 免费模型。
+- CLI 调用失败时，手动校准仍可用，AI 模式显示明确错误。
+- 新闻最终分数由固定公式计算，不直接采用模型给出的总分。
 
 ## Out of scope
 
 - 用户账号和登录系统。
-- 上线前历史分数回溯。
-- 外部 LLM 和第三方内容源。
+- 服务端长期归档聊天记录。

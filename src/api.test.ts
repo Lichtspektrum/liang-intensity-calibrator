@@ -25,14 +25,14 @@ describe("createApiClient", () => {
         { date: "2026-08-13", score: 2.5, stage: "梁圣", voterCount: 4 },
       ])));
     vi.stubGlobal("fetch", fetchMock);
-    const client = createApiClient("https://liang-api.example.workers.dev///");
+    const client = createApiClient("https://liang-api.example.com///");
 
     await expect(client.fetchScore()).resolves.toEqual(score);
     await expect(client.fetchTimeline("2026-08-01", "2026-08-14")).resolves.toHaveLength(1);
     expect(client.configured).toBe(true);
-    expect(fetchMock.mock.calls[0]?.[0]).toBe("https://liang-api.example.workers.dev/api/score");
+    expect(fetchMock.mock.calls[0]?.[0]).toBe("https://liang-api.example.com/api/score");
     expect(fetchMock.mock.calls[1]?.[0]).toBe(
-      "https://liang-api.example.workers.dev/api/timeline?from=2026-08-01&to=2026-08-14",
+      "https://liang-api.example.com/api/timeline?from=2026-08-01&to=2026-08-14",
     );
   });
 
@@ -43,11 +43,11 @@ describe("createApiClient", () => {
     );
     vi.stubGlobal("fetch", fetchMock);
 
-    const client = createApiClient("https://liang-api.example.workers.dev/");
+    const client = createApiClient("https://liang-api.example.com/");
     await expect(client.submitVote("fingerprint-123", 6)).resolves.toEqual(result);
 
     expect(fetchMock).toHaveBeenCalledOnce();
-    expect(fetchMock.mock.calls[0]?.[0]).toBe("https://liang-api.example.workers.dev/api/vote");
+    expect(fetchMock.mock.calls[0]?.[0]).toBe("https://liang-api.example.com/api/vote");
     expect(fetchMock.mock.calls[0]?.[1]).toMatchObject({
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -74,7 +74,7 @@ describe("createApiClient", () => {
       .mockResolvedValueOnce(new Response(JSON.stringify(cooldown), { status: 429 }))
       .mockResolvedValueOnce(new Response(JSON.stringify(rateLimited), { status: 429 }));
     vi.stubGlobal("fetch", fetchMock);
-    const client = createApiClient("https://liang-api.example.workers.dev");
+    const client = createApiClient("https://liang-api.example.com");
 
     await expect(client.submitVote("fingerprint-123", 3)).resolves.toEqual(cooldown);
     await expect(client.submitVote("fingerprint-123", 3)).resolves.toEqual(rateLimited);
@@ -98,10 +98,10 @@ describe("createApiClient", () => {
     const fetchMock = vi.fn();
     vi.stubGlobal("fetch", fetchMock);
     const invalidBases = [
-      "https://user:pass@liang-api.example.workers.dev",
-      "https://liang-api.example.workers.dev?tenant=evil",
-      "https://liang-api.example.workers.dev#evil",
-      "https://liang-api.example.workers.dev/proxy",
+      "https://user:pass@liang-api.example.com",
+      "https://liang-api.example.com?tenant=evil",
+      "https://liang-api.example.com#evil",
+      "https://liang-api.example.com/proxy",
     ];
 
     for (const base of invalidBases) {
@@ -149,7 +149,7 @@ describe("createApiClient", () => {
     });
     fetchMock.mockResolvedValueOnce(new Response(infiniteScore));
     vi.stubGlobal("fetch", fetchMock);
-    const client = createApiClient("https://liang-api.example.workers.dev");
+    const client = createApiClient("https://liang-api.example.com");
 
     for (let index = 0; index < invalidScores.length + 1; index += 1) {
       await expect(client.fetchScore()).rejects.toThrow("Invalid score response");
@@ -169,7 +169,7 @@ describe("createApiClient", () => {
     };
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify(empty))));
 
-    await expect(createApiClient("https://liang-api.example.workers.dev").fetchScore())
+    await expect(createApiClient("https://liang-api.example.com").fetchScore())
       .resolves.toEqual(empty);
   });
 
@@ -188,7 +188,7 @@ describe("createApiClient", () => {
       .mockResolvedValueOnce(new Response(JSON.stringify(score)))
       .mockResolvedValueOnce(new Response(JSON.stringify(midpoint)));
     vi.stubGlobal("fetch", fetchMock);
-    const client = createApiClient("https://liang-api.example.workers.dev");
+    const client = createApiClient("https://liang-api.example.com");
 
     await expect(client.fetchScore()).resolves.toEqual(score);
     await expect(client.fetchScore()).resolves.toEqual(midpoint);
@@ -207,7 +207,7 @@ describe("createApiClient", () => {
       fetchMock.mockResolvedValueOnce(new Response(JSON.stringify(value)));
     });
     vi.stubGlobal("fetch", fetchMock);
-    const client = createApiClient("https://liang-api.example.workers.dev");
+    const client = createApiClient("https://liang-api.example.com");
 
     for (const _ of invalidDays) {
       await expect(client.fetchTimeline()).rejects.toThrow("Invalid timeline response");
@@ -225,7 +225,7 @@ describe("createApiClient", () => {
         nextVoteAt: 123,
       })));
     vi.stubGlobal("fetch", fetchMock);
-    const client = createApiClient("https://liang-api.example.workers.dev");
+    const client = createApiClient("https://liang-api.example.com");
 
     await expect(client.fetchScore()).rejects.toThrow("API error: 503");
     await expect(client.submitVote("fingerprint-123", 3)).rejects.toThrow(
@@ -258,7 +258,7 @@ describe("createApiClient", () => {
       .mockResolvedValueOnce(new Response(JSON.stringify(accepted), { status: 503 }))
       .mockResolvedValueOnce(new Response(JSON.stringify(unavailable), { status: 400 }));
     vi.stubGlobal("fetch", fetchMock);
-    const client = createApiClient("https://liang-api.example.workers.dev");
+    const client = createApiClient("https://liang-api.example.com");
     const submit = () => client.submitVote("fingerprint-123", 3);
 
     await expect(submit()).rejects.toThrow("Invalid vote response");
@@ -286,7 +286,7 @@ describe("createApiClient", () => {
         nextVoteAt: -1,
       })));
     vi.stubGlobal("fetch", fetchMock);
-    const client = createApiClient("https://liang-api.example.workers.dev");
+    const client = createApiClient("https://liang-api.example.com");
 
     await expect(client.submitVote("fingerprint-123", 3)).rejects.toThrow(
       "Invalid vote response",

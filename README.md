@@ -1,25 +1,22 @@
 # 滑动变祖器
 
-一个「梁系强度校准器」网页小玩具。拖动滑杆，人物会在 31 个等级间连续变化，从「小难梁」一路到戴上帝冕的「梁祖」。
+一个「梁系强度校准器」网页小玩具。拖动滑杆，人物会在 31 个等级间连续变化；也可以根据当天 AI 新闻自动校准，或输入文字获得基于梁文锋公开表达框架的回答。
 
-[在线体验](https://lichtspektrum.github.io/liang-intensity-calibrator/)
-
-## 现在能做什么
+## 功能
 
 - 六个状态：小难梁、牢梁、梁子、梁圣、梁神、梁祖
-- 滑杆对应 -15 到 +15，视频帧让中间状态平滑过渡
-- 每个浏览器保留一张投票，每 3 小时可修改一次
-- 阴影圆点显示当前有效投票的平均值
-- 每天记录一个社区平均值快照，用于时间线
-- 支持鼠标、触摸和键盘，适配桌面和手机浏览器
+- 滑杆范围为 -15 到 +15，支持鼠标、触摸和键盘
+- 本机记忆上一次手动校准位置
+- 新闻模式：采集当天 AI 新闻，再按原创、开放、效率、智能与克制五个维度校准
+- 新闻采集显示真实分阶段进度、来源计数、耗时和详细事件；完成后在校准结论旁以安全 Markdown 展示新闻
+- 对话模式：连续保留上下文，校准输入，并以梁文锋第一人称角色和公开材料提炼出的思考框架回答
+- 所有需要 LLM 的搜索、分析和回答均通过本地 OpenCode CLI，并固定使用 `opencode/deepseek-v4-flash-free`
 
-## 项目结构
+模型不需要 API key。新闻搜索可调用 OpenCode 的 `websearch` 与 `webfetch`，分析和对话可读取项目内提炼的梁文锋 skill。
 
-前端与视频文件放在 GitHub Pages。Cloudflare Worker 只提供 `/api/score`、`/api/vote` 和 `/api/timeline`，投票与每日快照存在 D1。项目不使用 SSR、R2 或新闻采集。
+## 本地启动
 
-## 本地运行
-
-需要 Node.js 22 或更高版本。
+需要 Node.js 24 或更高版本。
 
 ```bash
 git clone https://github.com/Lichtspektrum/liang-intensity-calibrator.git
@@ -27,63 +24,45 @@ cd liang-intensity-calibrator
 npm install
 ```
 
-先生成 32 字节的本地随机密钥：
+启动：
 
 ```bash
-openssl rand -hex 32
+npm start
 ```
 
-复制输出结果，在项目根目录新建 `.dev.vars`：
+然后打开 `http://127.0.0.1:5173/`。一个命令会同时启动网页和本地 API。SQLite 数据保存在 `.data/liang.sqlite`，首次启动时自动应用 `migrations/` 中的迁移。
 
-```dotenv
-VOTER_HASH_SECRET=粘贴刚才生成的结果
-```
+OpenCode 不是常驻服务：只有进入新闻模式或提交聊天时，API 才启动一次 `opencode run`；任务完成后 CLI 进程立即退出。空闲时没有模型进程。
 
-`.dev.vars` 已被 Git 忽略，不要提交它。打开两个终端：
+梁式对话固定使用 OpenCode `--variant low`。若草稿泄露 OpenCode、模型或助手身份，服务会自动严格改写一次；仍然跳出角色则不会把该答案展示给用户。
+
+常用检查：
 
 ```bash
-# 首次运行时先创建本地 D1 表
-npx wrangler d1 migrations apply DB --local
-
-# 终端 1：API，默认 http://127.0.0.1:8787
-npm run dev:worker
-
-# 终端 2：页面
-VITE_API_BASE_URL=http://127.0.0.1:8787 npm run dev
+npm test -- --run
+npm run test:e2e
+npm run build
 ```
 
-终端显示的地址就是本地页面。常用检查命令：
+## 架构
 
-```bash
-npm test -- --run       # 单元测试
-npm run test:e2e        # 桌面与手机浏览器测试
-npm run build           # 检查 Worker 构建
-npm run build:pages     # 构建 GitHub Pages
-npm run media:posters   # 从源 PNG 生成 WebP 首帧
-```
+- Vite 提供前端页面。
+- `src/server.ts` 是普通 Node HTTP API。
+- `node:sqlite` 保存每日快照、新闻缓存和聊天限流计数。
+- `src/opencode-runner.ts` 按需调用项目本地安装的 OpenCode CLI。
+- `server/opencode-runtime/` 只允许梁文锋 skill、`websearch` 与 `webfetch`；文件编辑、shell 和其他工具均被禁用。
 
-## 准备云端配置
+新闻采集参考 `wanshi-tong` 科技新闻模块的思路，但只保留 AI 范围：Hacker News、arXiv、官方 GitHub releases，以及 OpenCode 中英双路 `websearch → webfetch`。采集结果会校验发布日期、合并去重，再交给已加载梁文锋 skill 的专用分析模块。模型只输出五维证据，最终 -15 到 +15 分数由固定权重计算。
 
-下面操作只需在首次发布前做一次。这个仓库已准备好工作流，不会因为提交代码自动发布 Worker。
+## 发布
 
-1. 登录 Cloudflare，在本地运行 `npx wrangler login`。
-2. 运行 `npx wrangler d1 create liang-intensity-db`。如果你部署自己的副本，把返回的 `database_id` 写入 `wrangler.json`，替换仓库中现有项目的数据库 ID。
-3. 再运行一次 `openssl rand -hex 32`，复制新结果。运行 `npx wrangler secret put VOTER_HASH_SECRET`，按提示粘贴。它只保存在 Cloudflare，不要写进 GitHub。
-4. 在 Cloudflare 的 `Manage Account → Account API Tokens` 从「Edit Cloudflare Workers」模板创建 Token。保留 `Workers Scripts: Edit` 和 `D1: Edit` 权限，Account Resources 只选这个项目使用的 Cloudflare 账户。在 GitHub 仓库的 `Settings → Secrets and variables → Actions` 添加两个 Repository secret：`CLOUDFLARE_API_TOKEN` 和 `CLOUDFLARE_ACCOUNT_ID`。
-5. 在同一页的 Variables 添加 `VITE_API_BASE_URL`，值填 Worker 的完整 HTTPS 地址，例如 `https://liang-intensity-api.<你的子域名>.workers.dev`。不要在末尾加 `/`。
+静态页面仍可发布到 GitHub Pages，但新闻和对话需要一台能运行 Node.js、SQLite 与 OpenCode CLI 的主机。Node API 可通过反向代理提供 HTTPS；它会在收到 AI 请求时直接启动本机 CLI，不需要单独部署模型网关。
 
-运行发布工作流前，确认 `wrangler.json` 里的 `database_id` 指向你刚创建的 D1 数据库。直接复用仓库里的 ID 会因账户不匹配而失败。
+## 材料与致谢
 
-缺少 secret 或 repository variable 时，对应工作流会在 migration 或 Pages 构建前失败，不会用空地址发布。
+人像素材用于趣味演示；复用或二次发布前，请确认相关肖像与素材的使用权。
 
-Pages 在 `main` 分支更新后自动发布。Worker 需要在 GitHub Actions 中手动运行「Deploy API Worker」；工作流会先跑测试和构建，再应用 D1 migration 并发布 Worker。
-
-## 回滚
-
-页面出现问题时，在 GitHub Actions 里找到上一次正常的「Deploy GitHub Pages」记录并重新运行。Worker 可在 Cloudflare 控制台的部署记录中选择上一个版本回滚。已成功应用的 D1 migration 会保留，即使后续 Worker 发布失败也不会自动撤销。所以新 migration 必须与上一个 Worker 版本兼容；改表结构前先备份，出问题时再用一个新 migration 修正。
-
-## 素材与致谢
-
-`media` 与 `public/frames` 里的人像素材用于趣味演示。复用或二次发布前，请确认你拥有相关肖像与素材的使用权。
-
-社区投票功能的最初思路来自 [PR #7](https://github.com/Lichtspektrum/liang-intensity-calibrator/pull/7) 的 [@loggerhead](https://github.com/loggerhead)。
+- AI 新闻采集结构参考 [wanshi-tong](https://github.com/Pawnnwap/wanshi-tong)
+- 人物框架提炼方法参考 [nuwa-skill](https://github.com/alchaincyf/nuwa-skill)
+- 主要公开材料使用 [36氪·暗涌 2024 年专访](https://www.36kr.com/p/2872793466982535)
+- 会议短句采用目前找到的[较早原始文章](https://mp.weixin.qq.com/s/AWsSjcT9NYbj1W8SWXgb_w)，并同时链接[带时间戳的整理归档](https://github.com/iamsophie/deepseek-liang-wenfeng-investor-meeting)。两者均未获梁文锋或 DeepSeek 官方确认

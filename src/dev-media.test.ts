@@ -104,7 +104,7 @@ describe("Vite development media", () => {
     expect(post.headers.get("accept-ranges")).toBeNull();
   });
 
-  it("closes every media file after clients abort downloads", async () => {
+  it.skipIf(process.platform === "win32")("closes every media file after clients abort downloads", async () => {
     const origin = await startDevelopmentServer();
     const baseline = openMediaDescriptorCount();
 

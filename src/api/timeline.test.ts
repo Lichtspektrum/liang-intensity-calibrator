@@ -4,7 +4,6 @@ import { readFile } from "node:fs/promises";
 import { DatabaseSync, type SQLInputValue } from "node:sqlite";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import worker from "../worker";
 import { handleScheduled } from "./scheduled";
 import type { Env } from "./shared";
 import {
@@ -217,7 +216,7 @@ describe("daily snapshot recording", () => {
     });
   });
 
-  it("the Worker entry anchors the archive date to scheduledTime", async () => {
+  it("the scheduler anchors the archive date to its supplied timestamp", async () => {
     insertVoter("voter", 7);
     const scheduledTime = Date.parse("2026-08-14T16:30:00.000Z");
     const dateNow = vi.spyOn(Date, "now").mockReturnValue(
@@ -225,15 +224,7 @@ describe("daily snapshot recording", () => {
     );
 
     try {
-      await worker.scheduled(
-        { scheduledTime, cron: "30 16 * * *", noRetry() {} } as ScheduledController,
-        env,
-        {
-          waitUntil() {},
-          passThroughOnException() {},
-          props: {},
-        } as ExecutionContext,
-      );
+      await handleScheduled(env, scheduledTime);
     } finally {
       dateNow.mockRestore();
     }

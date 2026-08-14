@@ -1,5 +1,6 @@
 import { MAX_SCORE, MIN_SCORE, STAGES, describeScore } from "./score-domain";
 import { scoreFromBallots } from "./score-engine";
+import type { CalibrationDimensions, TranscriptQuote } from "./liang-profile";
 
 export interface ScoreData {
   score: number;
@@ -25,6 +26,77 @@ export interface TimelineDayData {
   score: number;
   stage: string;
   voterCount: number;
+}
+
+export interface NewsItemData {
+  id: string;
+  title: string;
+  summaryZh: string;
+  url: string;
+  source: string;
+  publishedAt: string;
+  tags: string[];
+}
+
+export interface NewsCalibrationData {
+  date: string;
+  score: number;
+  stage: string;
+  headline: string;
+  rationale: string;
+  dimensions: CalibrationDimensions;
+  quote: TranscriptQuote;
+  quoteSource: string;
+  transcriptSource: string;
+  sourceCaveat: string;
+  items: NewsItemData[];
+  collectedAt: number;
+}
+
+export type NewsJobStatus = "running" | "completed" | "failed";
+
+export interface NewsProgressEventData {
+  id: number;
+  progress: number;
+  stage: string;
+  label: string;
+  detail: string;
+  at: number;
+}
+
+export interface NewsJobData {
+  id: string;
+  status: NewsJobStatus;
+  progress: number;
+  stage: string;
+  label: string;
+  detail: string;
+  startedAt: number;
+  updatedAt: number;
+  elapsedMs: number;
+  stats: {
+    directItems?: number;
+    webItems?: number;
+    uniqueItems?: number;
+    sourcesCompleted?: number;
+    sourcesTotal?: number;
+  };
+  events: NewsProgressEventData[];
+  result?: NewsCalibrationData;
+}
+
+export interface ChatData {
+  score: number;
+  stage: string;
+  answer: string;
+  calibrationSummary: string;
+  dimensions: CalibrationDimensions;
+  disclaimer: string;
+}
+
+export interface ChatTurnData {
+  role: "user" | "assistant";
+  content: string;
 }
 
 interface VoteCommunityData extends ScoreData {
@@ -61,6 +133,10 @@ export interface ApiClient {
   fetchScore(): Promise<ScoreData>;
   submitVote(fingerprint: string, position: number): Promise<VoteResult>;
   fetchTimeline(from?: string, to?: string): Promise<TimelineDayData[]>;
+  fetchNews(): Promise<NewsCalibrationData>;
+  startNewsCollection(force?: boolean): Promise<NewsJobData>;
+  fetchNewsProgress(jobId: string): Promise<NewsJobData>;
+  chat(message: string, history?: readonly ChatTurnData[]): Promise<ChatData>;
 }
 
 export class CommunityUnavailableError extends Error {
@@ -167,6 +243,77 @@ function isTimelineDayData(value: unknown): value is TimelineDayData {
     && isNonNegativeSafeInteger(value.voterCount);
 }
 
+const dimensionKeys: (keyof CalibrationDimensions)[] = [
+  "originality", "openness", "efficiency", "intelligence", "restraint",
+];
+
+function isDimensions(value: unknown): value is CalibrationDimensions {
+  return isRecord(value) && dimensionKeys.every((key) =>
+    typeof value[key] === "number"
+    && Number.isFinite(value[key])
+    && value[key] >= -1
+    && value[key] <= 1,
+  );
+}
+
+function isNewsCalibration(value: unknown): value is NewsCalibrationData {
+  return isRecord(value)
+    && isCalendarDate(value.date)
+    && isValidScoreAndStage(value)
+    && typeof value.headline === "string"
+    && typeof value.rationale === "string"
+    && isDimensions(value.dimensions)
+    && isRecord(value.quote)
+    && typeof value.quote.text === "string"
+    && typeof value.quote.timestamp === "string"
+    && typeof value.quoteSource === "string"
+    && typeof value.transcriptSource === "string"
+    && typeof value.sourceCaveat === "string"
+    && Array.isArray(value.items)
+    && typeof value.collectedAt === "number";
+}
+
+function isNewsJob(value: unknown): value is NewsJobData {
+  if (!isRecord(value)) return false;
+  const statusValid = value.status === "running"
+    || value.status === "completed"
+    || value.status === "failed";
+  const eventsValid = Array.isArray(value.events) && value.events.every((event) =>
+    isRecord(event)
+    && isNonNegativeSafeInteger(event.id)
+    && typeof event.progress === "number"
+    && event.progress >= 0
+    && event.progress <= 100
+    && typeof event.stage === "string"
+    && typeof event.label === "string"
+    && typeof event.detail === "string"
+    && isNonNegativeSafeInteger(event.at),
+  );
+  return typeof value.id === "string"
+    && statusValid
+    && typeof value.progress === "number"
+    && value.progress >= 0
+    && value.progress <= 100
+    && typeof value.stage === "string"
+    && typeof value.label === "string"
+    && typeof value.detail === "string"
+    && isNonNegativeSafeInteger(value.startedAt)
+    && isNonNegativeSafeInteger(value.updatedAt)
+    && isNonNegativeSafeInteger(value.elapsedMs)
+    && isRecord(value.stats)
+    && eventsValid
+    && (value.result === undefined || isNewsCalibration(value.result));
+}
+
+function isChatData(value: unknown): value is ChatData {
+  return isRecord(value)
+    && isValidScoreAndStage(value)
+    && typeof value.answer === "string"
+    && typeof value.calibrationSummary === "string"
+    && typeof value.disclaimer === "string"
+    && isDimensions(value.dimensions);
+}
+
 function isVotePosition(value: unknown): value is number {
   return isSafeInteger(value)
     && value >= MIN_SCORE
@@ -233,6 +380,10 @@ export function createApiClient(baseUrl: string | undefined): ApiClient {
       fetchScore: unavailable,
       submitVote: unavailable,
       fetchTimeline: unavailable,
+      fetchNews: unavailable,
+      startNewsCollection: unavailable,
+      fetchNewsProgress: unavailable,
+      chat: unavailable,
     };
   }
 
@@ -281,6 +432,35 @@ export function createApiClient(baseUrl: string | undefined): ApiClient {
       if (!Array.isArray(result) || !result.every(isTimelineDayData)) {
         throw new Error("Invalid timeline response");
       }
+      return result;
+    },
+    async fetchNews() {
+      const result = await fetchJson<unknown>("/api/news");
+      if (!isNewsCalibration(result)) throw new Error("Invalid news response");
+      return result;
+    },
+    async startNewsCollection(force = false) {
+      const result = await fetchJson<unknown>("/api/news/jobs", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ force }),
+      });
+      if (!isNewsJob(result)) throw new Error("Invalid news job response");
+      return result;
+    },
+    async fetchNewsProgress(jobId) {
+      if (!/^[0-9a-f-]{36}$/iu.test(jobId)) throw new Error("Invalid news job id");
+      const result = await fetchJson<unknown>(`/api/news/jobs/${jobId}`);
+      if (!isNewsJob(result)) throw new Error("Invalid news job response");
+      return result;
+    },
+    async chat(message, history = []) {
+      const result = await fetchJson<unknown>("/api/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ message, history }),
+      });
+      if (!isChatData(result)) throw new Error("Invalid chat response");
       return result;
     },
   };

@@ -1,18 +1,16 @@
 import "./styles.css";
 
-import "number-flow";
-
-import { type AppController, mountApp } from "./app";
-import { createApiClient, type ScoreData, type TimelineDayData } from "./api";
+import { type AppController, type AppMode, mountApp } from "./app";
+import { createApiClient, type ChatTurnData, type ScoreData, type TimelineDayData } from "./api";
 import { MAX_SCORE, MIN_SCORE } from "./score-domain";
+import { easeInOutCubic, scoreTransitionDurationMs } from "./score-transition";
 import {
   createVideoRenderer,
   getPosterPath,
   type VideoRenderer,
 } from "./video-renderer";
 
-const VOTE_STORAGE_KEY = "liang-slider:vote:v3";
-const FALLBACK_FINGERPRINT_KEY = "liang-slider:fallback-fingerprint:v1";
+const MANUAL_STORAGE_KEY = "liang-slider:manual-position:v1";
 
 interface StoredVote {
   position: number;
@@ -41,17 +39,9 @@ export function parseStoredVote(raw: string | null): StoredVote | null {
 
 function saveStoredVote(vote: StoredVote): void {
   const raw = JSON.stringify(vote);
-  localStorage.setItem(VOTE_STORAGE_KEY, raw);
+  localStorage.setItem(MANUAL_STORAGE_KEY, raw);
   observedVoteStorageValue = raw;
   activeVote = vote;
-}
-
-function getFallbackFingerprint(): string {
-  const stored = localStorage.getItem(FALLBACK_FINGERPRINT_KEY);
-  if (stored) return stored;
-  const fingerprint = `fallback-${crypto.randomUUID()}`;
-  localStorage.setItem(FALLBACK_FINGERPRINT_KEY, fingerprint);
-  return fingerprint;
 }
 
 const app = document.querySelector<HTMLElement>("#app");
@@ -66,15 +56,15 @@ poster.setAttribute("aria-hidden", "true");
 
 let controller: AppController | null = null;
 let renderer: VideoRenderer | null = null;
-let fingerprintPromise: Promise<string> | null = null;
 let lastCommunityScore = 0;
-let communityRevision = 0;
-let cooldownTimeout: ReturnType<typeof setTimeout> | null = null;
-let cooldownDeadline: number | null = null;
-let cooldownGeneration = 0;
 let activeVote: StoredVote | null = null;
 let observedVoteStorageValue: string | null = null;
-let voteInFlight = false;
+let newsInFlight = false;
+let newsLoaded = false;
+let chatInFlight = false;
+let appMode: AppMode = "manual";
+let chatTransitionGeneration = 0;
+const chatHistory: ChatTurnData[] = [];
 const timelineByDate = new Map<string, TimelineDayData>();
 
 const requestDraw = (score: number): void => {
@@ -89,13 +79,8 @@ function applyCommunityScore(score: ScoreData): void {
   controller?.setCommunityScore(score);
 }
 
-function applyVoteCommunityScore(score: ScoreData): void {
-  communityRevision += 1;
-  applyCommunityScore(score);
-}
-
 function syncActiveVoteFromStorage(): StoredVote | null {
-  const raw = localStorage.getItem(VOTE_STORAGE_KEY);
+  const raw = localStorage.getItem(MANUAL_STORAGE_KEY);
   if (raw !== observedVoteStorageValue) {
     observedVoteStorageValue = raw;
     activeVote = parseStoredVote(raw);
@@ -103,116 +88,11 @@ function syncActiveVoteFromStorage(): StoredVote | null {
   return activeVote;
 }
 
-function showCooldownUntil(nextVoteAt: number): void {
-  cooldownGeneration += 1;
-  const generation = cooldownGeneration;
-  if (cooldownTimeout !== null) {
-    clearTimeout(cooldownTimeout);
-    cooldownTimeout = null;
-  }
-
-  cooldownDeadline = nextVoteAt;
-  const update = (): void => {
-    if (generation !== cooldownGeneration) return;
-    const remainingMs = Math.max(0, nextVoteAt - Date.now());
-    controller?.setCooldown(remainingMs);
-    if (remainingMs <= 0) {
-      cooldownTimeout = null;
-      cooldownDeadline = null;
-      return;
-    }
-
-    const displayedMinutes = Math.ceil(remainingMs / 60_000);
-    const nextBoundaryMs = remainingMs - (displayedMinutes - 1) * 60_000;
-    cooldownTimeout = setTimeout(update, Math.max(1, nextBoundaryMs));
-  };
-  update();
-}
-
-function clearCooldown(): void {
-  cooldownGeneration += 1;
-  cooldownDeadline = null;
-  if (cooldownTimeout !== null) {
-    clearTimeout(cooldownTimeout);
-    cooldownTimeout = null;
-  }
-}
-
-function showVoteError(): void {
-  clearCooldown();
-  controller?.setVoteError();
-}
-
-function recalibrateCooldown(): void {
-  if (cooldownDeadline !== null) showCooldownUntil(cooldownDeadline);
-}
-
-function getFingerprint(): Promise<string> {
-  fingerprintPromise ??= import("@fingerprintjs/fingerprintjs")
-    .then(async ({ default: FingerprintJS }) => {
-      const fp = await FingerprintJS.load();
-      const result = await fp.get();
-      return result.visitorId;
-    })
-    .catch(getFallbackFingerprint);
-  return fingerprintPromise;
-}
-
-controller.onVote = async (position: number) => {
+controller.onVote = (position: number) => {
   if (!controller) return;
-
-  const currentVote = syncActiveVoteFromStorage();
-  if (currentVote && Date.now() < currentVote.nextVoteAt) {
-    controller.restoreVote(currentVote.position);
-    showCooldownUntil(currentVote.nextVoteAt);
-    return;
-  }
-
-  const fallbackPosition = currentVote?.position ?? lastCommunityScore;
-  if (voteInFlight) {
-    controller.restoreVote(fallbackPosition);
-    return;
-  }
-
-  if (!api.configured) {
-    controller.restoreVote(fallbackPosition);
-    showVoteError();
-    return;
-  }
-
-  voteInFlight = true;
-  try {
-    const result = await api.submitVote(await getFingerprint(), position);
-    if (result.accepted) {
-      saveStoredVote({ position: result.userPosition, nextVoteAt: result.nextVoteAt });
-      controller.setUserVotePosition(result.userPosition);
-      applyVoteCommunityScore(result);
-      controller.restoreVote(result.userPosition);
-      showCooldownUntil(result.nextVoteAt);
-      return;
-    }
-
-    if (result.reason === "cooldown") {
-      activeVote = { position: result.userPosition, nextVoteAt: result.nextVoteAt };
-      applyVoteCommunityScore(result);
-      controller.setUserVotePosition(result.userPosition);
-      controller.restoreVote(result.userPosition);
-      showCooldownUntil(result.nextVoteAt);
-      return;
-    }
-
-    if (result.reason === "rate_limited") {
-      applyVoteCommunityScore(result);
-    }
-
-    controller.restoreVote(fallbackPosition);
-    showVoteError();
-  } catch {
-    controller.restoreVote(fallbackPosition);
-    showVoteError();
-  } finally {
-    voteInFlight = false;
-  }
+  saveStoredVote({ position, nextVoteAt: 0 });
+  controller.setUserVotePosition(position);
+  controller.restoreVote(position);
 };
 
 controller.onHistorySelect = (date: string) => {
@@ -224,12 +104,117 @@ controller.onHistoryExit = () => {
   controller?.exitHistoryMode();
 };
 
+const NEWS_PROGRESS_POLL_MS = 650;
+
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function loadNewsMode(force = false): Promise<void> {
+  if (!controller || newsInFlight) return;
+  if (!api.configured) {
+    controller.setNewsError("AI API 未配置，新闻模式暂不可用");
+    return;
+  }
+  newsInFlight = true;
+  controller.setNewsLoading();
+  try {
+    let job = await api.startNewsCollection(force);
+    controller.setNewsProgress(job);
+    while (job.status === "running") {
+      await delay(NEWS_PROGRESS_POLL_MS);
+      job = await api.fetchNewsProgress(job.id);
+      controller.setNewsProgress(job);
+    }
+    if (job.status !== "completed" || !job.result) {
+      throw new Error("news collection failed");
+    }
+    const result = job.result;
+    controller.setScore(result.score);
+    controller.setNewsResult(result);
+    newsLoaded = true;
+  } catch {
+    controller.setNewsError("今天的 AI 新闻暂时读取失败，请稍后重试");
+  } finally {
+    newsInFlight = false;
+  }
+}
+
+controller.onModeChange = (mode) => {
+  appMode = mode;
+  chatTransitionGeneration += 1;
+  if (mode === "news" && !newsLoaded) void loadNewsMode();
+};
+
+controller.onNewsRefresh = () => {
+  void loadNewsMode(true);
+};
+
+controller.onChatSubmit = async (message: string) => {
+  if (!controller || chatInFlight) return;
+  if (!api.configured) {
+    controller.setChatError("AI API 未配置，对话模式暂不可用");
+    return;
+  }
+  chatInFlight = true;
+  controller.setChatLoading(message);
+  try {
+    const result = await api.chat(message, chatHistory.slice(-20));
+    chatHistory.push(
+      { role: "user", content: message },
+      { role: "assistant", content: result.answer },
+    );
+    controller.setChatResult(result);
+    chatInFlight = false;
+    const transitionStart = controller.score;
+    const generation = ++chatTransitionGeneration;
+    await animateChatScore(transitionStart, result.score, generation);
+  } catch {
+    controller.setChatError("这次回答没有生成成功，请稍后重试");
+  } finally {
+    chatInFlight = false;
+  }
+};
+
+async function animateChatScore(
+  from: number,
+  to: number,
+  generation: number,
+): Promise<void> {
+  if (!controller || appMode !== "chat") return;
+  const durationMs = scoreTransitionDurationMs(from, to);
+  if (durationMs === 0) {
+    controller.setScore(to);
+    return;
+  }
+
+  const startedAt = performance.now();
+  await new Promise<void>((resolve) => {
+    const frame = (now: number): void => {
+      if (!controller || appMode !== "chat" || generation !== chatTransitionGeneration) {
+        resolve();
+        return;
+      }
+
+      const progress = Math.min(1, (now - startedAt) / durationMs);
+      controller.setScore(from + (to - from) * easeInOutCubic(progress));
+      if (progress >= 1) {
+        controller.setScore(to);
+        resolve();
+        return;
+      }
+      window.requestAnimationFrame(frame);
+    };
+    window.requestAnimationFrame(frame);
+  });
+}
+
 function resetLocalVoteFromQuery(): void {
   const url = new URL(window.location.href);
   const isLocalDevelopment = url.hostname === "localhost" || url.hostname === "127.0.0.1";
   if (!isLocalDevelopment || url.searchParams.get("reset") !== "1") return;
 
-  localStorage.removeItem(VOTE_STORAGE_KEY);
+  localStorage.removeItem(MANUAL_STORAGE_KEY);
   activeVote = null;
   observedVoteStorageValue = null;
   url.searchParams.delete("reset");
@@ -260,24 +245,16 @@ async function loadCommunity(): Promise<void> {
     return;
   }
 
-  const revisionAtRequest = communityRevision;
   try {
     const score = await api.fetchScore();
-    if (communityRevision === revisionAtRequest) {
-      applyCommunityScore(score);
-      const latestVote = syncActiveVoteFromStorage();
-      if (latestVote) {
-        controller.setUserVotePosition(latestVote.position);
-        controller.restoreVote(latestVote.position);
-        if (latestVote.nextVoteAt > Date.now()) {
-          showCooldownUntil(latestVote.nextVoteAt);
-        }
-      }
+    applyCommunityScore(score);
+    const latestVote = syncActiveVoteFromStorage();
+    if (latestVote) {
+      controller.setUserVotePosition(latestVote.position);
+      controller.restoreVote(latestVote.position);
     }
   } catch {
-    if (communityRevision === revisionAtRequest) {
-      controller.setCommunityUnavailable();
-    }
+    controller.setCommunityUnavailable();
   }
 
   try {
@@ -302,9 +279,6 @@ function bootstrap(): void {
   controller?.setUserVotePosition(currentVote?.position ?? null);
   if (currentVote) {
     controller?.restoreVote(currentVote.position);
-    if (currentVote.nextVoteAt > Date.now()) {
-      showCooldownUntil(currentVote.nextVoteAt);
-    }
   }
   void loadMedia();
   void loadCommunity();
@@ -316,7 +290,3 @@ window.addEventListener("resize", () => {
   renderer?.redraw();
 });
 
-window.addEventListener("focus", recalibrateCooldown);
-document.addEventListener("visibilitychange", () => {
-  if (document.visibilityState === "visible") recalibrateCooldown();
-});

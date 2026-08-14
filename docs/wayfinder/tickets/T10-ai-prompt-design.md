@@ -1,13 +1,13 @@
-# T10: Workers AI prompt 设计
+# T10: OpenCode prompt 设计
 
 **类型**: grilling（HITL）
 **状态**: open
-**依赖**: T1（新闻源调研）, T2（Workers AI 模型调研）
+**依赖**: T1（新闻源调研）, T2（OpenCode 免费模型调研）
 **阻塞**: T11（API 契约——不直接阻塞，但 prompt 输出格式影响 worker 内部实现）
 
 ## Question
 
-基于 T2 选定的 Workers AI 模型，设计新闻分析的 prompt。AI 需要完成的任务：
+基于 T2 选定的 OpenCode 免费模型，设计新闻分析的 prompt。AI 需要完成的任务：
 
 1. **相关性判断**：这条新闻是否与梁文峰/DeepSeek/梁系浓度相关？（过滤掉不相关的科技新闻）
 2. **极性分类**：这条新闻对梁系形象是正面（更接近梁神/梁祖）、负面（更接近小难梁/牢梁）、还是中性？输出 polarity ∈ [-1, 1]。

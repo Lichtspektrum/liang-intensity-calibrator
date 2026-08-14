@@ -3,9 +3,7 @@ import { MAX_SCORE, MIN_SCORE } from "../score-domain";
 import { getCommunityScore, type CommunityScore } from "./score";
 import {
   NEW_IDENTITIES_PER_IP_PER_DAY,
-  VOTE_COOLDOWN_MS,
   allowedOrigin,
-  getCooldownState,
   hmacIdentifier,
   jsonResponse,
   type Env,
@@ -96,22 +94,11 @@ async function updateVoter(
     .prepare(
       `UPDATE voters
        SET position = ?, updated_at = ?
-       WHERE voter_hash = ? AND updated_at <= ?`,
+       WHERE voter_hash = ?`,
     )
-    .bind(position, now, voterHash, now - VOTE_COOLDOWN_MS)
+    .bind(position, now, voterHash)
     .run();
   return result.meta?.changes === 1;
-}
-
-async function cooldownResponse(env: Env, voter: VoterRow): Promise<Response> {
-  const aggregate = await getCommunityScore(env);
-  return jsonResponse({
-    accepted: false,
-    reason: "cooldown",
-    userPosition: voter.position,
-    nextVoteAt: voter.updated_at + VOTE_COOLDOWN_MS,
-    ...scoreFields(aggregate),
-  } satisfies VoteResponse, { status: 429 });
 }
 
 export async function handlePostVote(request: Request, env: Env): Promise<Response> {
@@ -157,7 +144,7 @@ export async function handlePostVote(request: Request, env: Env): Promise<Respon
   }
 
   const now = Date.now();
-  const rawIp = request.headers.get("CF-Connecting-IP");
+  const rawIp = request.headers.get("X-Client-IP");
   if (!rawIp) {
     return jsonResponse(
       { accepted: false, reason: "invalid_request" } satisfies VoteResponse,
@@ -171,33 +158,27 @@ export async function handlePostVote(request: Request, env: Env): Promise<Respon
   const existing = await getExistingVoter(env, voterHash);
 
   if (existing) {
-    const cooldown = getCooldownState(existing.updated_at, now);
-    if (!cooldown.allowed) {
-      return cooldownResponse(env, existing);
-    }
-
     const updated = await updateVoter(env, voterHash, body.position, now);
     if (!updated) {
-      const current = await getExistingVoter(env, voterHash);
-      if (!current) throw new Error("Voter disappeared during conditional update");
-      return cooldownResponse(env, current);
+      throw new Error("Voter disappeared during update");
     }
   } else {
     const inserted = await insertVoter(env, voterHash, ipHash, body.position, now);
     if (!inserted) {
       const concurrentVoter = await getExistingVoter(env, voterHash);
       if (concurrentVoter) {
-        return cooldownResponse(env, concurrentVoter);
+        const updated = await updateVoter(env, voterHash, body.position, now);
+        if (!updated) throw new Error("Concurrent voter disappeared during update");
+      } else {
+        const aggregate = await getCommunityScore(env);
+        return jsonResponse({
+          accepted: false,
+          reason: "rate_limited",
+          userPosition: body.position,
+          nextVoteAt: null,
+          ...scoreFields(aggregate),
+        } satisfies VoteResponse, { status: 429 });
       }
-
-      const aggregate = await getCommunityScore(env);
-      return jsonResponse({
-        accepted: false,
-        reason: "rate_limited",
-        userPosition: body.position,
-        nextVoteAt: null,
-        ...scoreFields(aggregate),
-      } satisfies VoteResponse, { status: 429 });
     }
   }
 
@@ -205,7 +186,7 @@ export async function handlePostVote(request: Request, env: Env): Promise<Respon
   return jsonResponse({
     accepted: true,
     userPosition: body.position,
-    nextVoteAt: now + VOTE_COOLDOWN_MS,
+    nextVoteAt: 0,
     ...scoreFields(aggregate),
   } satisfies VoteResponse);
 }

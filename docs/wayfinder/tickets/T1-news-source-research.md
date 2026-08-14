@@ -6,7 +6,7 @@
 
 ## Current Sources
 
-当前代码只接入无认证、可由 Cloudflare Worker 直接 `fetch` 的轻量来源：
+当前代码只接入无认证、可由普通 Node 服务直接 `fetch` 的轻量来源：
 
 - GitHub releases:
   - `deepseek-ai/DeepSeek-V3`
