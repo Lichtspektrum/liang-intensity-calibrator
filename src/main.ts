@@ -103,7 +103,7 @@ function syncActiveVoteFromStorage(): StoredVote | null {
   return activeVote;
 }
 
-function showCooldownUntil(nextVoteAt: number): void {
+function showCooldownUntil(nextVoteAt: number, announce = false): void {
   cooldownGeneration += 1;
   const generation = cooldownGeneration;
   if (cooldownTimeout !== null) {
@@ -112,10 +112,16 @@ function showCooldownUntil(nextVoteAt: number): void {
   }
 
   cooldownDeadline = nextVoteAt;
+  let announced = false;
   const update = (): void => {
     if (generation !== cooldownGeneration) return;
     const remainingMs = Math.max(0, nextVoteAt - Date.now());
-    controller?.setCooldown(remainingMs);
+    if (announce && !announced) {
+      controller?.setCooldown(remainingMs, true);
+      announced = true;
+    } else {
+      controller?.setCooldown(remainingMs);
+    }
     if (remainingMs <= 0) {
       cooldownTimeout = null;
       cooldownDeadline = null;
@@ -164,7 +170,7 @@ controller.onVote = async (position: number) => {
   const currentVote = syncActiveVoteFromStorage();
   if (currentVote && Date.now() < currentVote.nextVoteAt) {
     controller.restoreVote(currentVote.position);
-    showCooldownUntil(currentVote.nextVoteAt);
+    showCooldownUntil(currentVote.nextVoteAt, true);
     return;
   }
 
@@ -188,7 +194,7 @@ controller.onVote = async (position: number) => {
       controller.setUserVotePosition(result.userPosition);
       applyVoteCommunityScore(result);
       controller.restoreVote(result.userPosition);
-      showCooldownUntil(result.nextVoteAt);
+      showCooldownUntil(result.nextVoteAt, true);
       return;
     }
 
@@ -197,7 +203,7 @@ controller.onVote = async (position: number) => {
       applyVoteCommunityScore(result);
       controller.setUserVotePosition(result.userPosition);
       controller.restoreVote(result.userPosition);
-      showCooldownUntil(result.nextVoteAt);
+      showCooldownUntil(result.nextVoteAt, true);
       return;
     }
 

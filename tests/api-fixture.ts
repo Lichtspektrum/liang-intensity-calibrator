@@ -9,6 +9,7 @@ export const INITIAL_SCORE = {
   score: 2.5,
   stage: "梁圣",
   voterCount: 4,
+  todayVoterCount: 1,
   positiveCount: 2,
   negativeCount: 1,
   neutralCount: 1,
@@ -52,6 +53,7 @@ function voteScore(position: number) {
               ? "牢梁"
               : "小难梁",
     voterCount: 1,
+    todayVoterCount: 1,
     positiveCount: position > 0 ? 1 : 0,
     negativeCount: position < 0 ? 1 : 0,
     neutralCount: position === 0 ? 1 : 0,

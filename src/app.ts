@@ -24,12 +24,14 @@ export interface AppController {
   setReady(): void;
   setError(message: string): void;
   setCommunityUnavailable(): void;
-  setCooldown(remainingMs: number): void;
+  setCooldown(remainingMs: number, announce?: boolean): void;
   setVoteError(): void;
   restoreVote(position: number): void;
   setCommunityScore(score: ScoreData): void;
   setUserVotePosition(position: number | null): void;
   setVotingState(state: {
+    voterCount: number;
+    todayVoterCount: number;
     positiveCount: number;
     negativeCount: number;
     neutralCount: number;
@@ -136,8 +138,9 @@ export function mountApp(
 
         <section class="control-panel" aria-label="梁系强度控制">
           <div class="slider-vote-layout" aria-label="梁氏浓度投票">
-            <output class="vote-total vote-total--down" aria-label="低强度累计票值">
+            <output class="vote-total vote-total--down" aria-label="低强度投票人数">
               <number-flow class="vote-total-flow" value="0"></number-flow>
+              <span class="vote-total-unit" aria-hidden="true">人</span>
             </output>
             <div class="range-control">
               <p class="vote-status" role="status" aria-live="polite">红色圆点是你的选择，灰色圆点是社区平均分</p>
@@ -159,8 +162,9 @@ export function mountApp(
               </div>
               <ol class="stage-markers">${createStageMarkers()}</ol>
             </div>
-            <output class="vote-total vote-total--up" aria-label="高强度累计票值">
+            <output class="vote-total vote-total--up" aria-label="高强度投票人数">
               <number-flow class="vote-total-flow" value="0"></number-flow>
+              <span class="vote-total-unit" aria-hidden="true">人</span>
             </output>
           </div>
           <p class="drag-hint"><span aria-hidden="true">←</span> 拖动红色圆点，松开即提交。−15 最弱，0 居中，+15 最强；每 3 小时可修改一次。 <span aria-hidden="true">→</span></p>
@@ -201,10 +205,67 @@ export function mountApp(
   let displayPosition = 0;
   let currentMode: "idle" | "previewing-vote" | "viewing-history" = "idle";
   let communityLevel = 0;
+  let communityTodayVoters = 0;
+  let communityTotalVoters = 0;
   let userVotePosition: number | null = null;
   let communityStatus: "unknown" | "available" | "unavailable" = "unknown";
   let actionStatus: "normal" | "cooldown" | "error" = "normal";
   let cooldownRemainingMs = 0;
+  let cooldownBannerVisible = false;
+  let cooldownBannerTimer: ReturnType<typeof setTimeout> | null = null;
+
+  const ANNOUNCE_MS = 2000;
+  const FADE_MS = 240;
+
+  interface StatusText {
+    text: string;
+    state: string;
+  }
+
+  const participation = (): string =>
+    `　今日 ${communityTodayVoters} 人投票　累计 ${communityTotalVoters} 人`;
+
+  const cooldownStatusText = (): StatusText => {
+    const totalMinutes = Math.ceil(cooldownRemainingMs / 60_000);
+    const hours = Math.floor(totalMinutes / 60);
+    const minutes = totalMinutes % 60;
+    const duration = hours > 0 && minutes > 0
+      ? `${hours} 小时 ${minutes} 分`
+      : hours > 0
+        ? `${hours} 小时`
+        : `${minutes} 分`;
+    return { text: `还需 ${duration}才能修改投票`, state: "cooldown" };
+  };
+
+  const normalStatusText = (): StatusText => {
+    if (communityStatus === "unavailable") {
+      return { text: "社区数据暂时无法加载", state: "community-unavailable" };
+    }
+    if (userVotePosition === null) {
+      return {
+        text: "红色圆点是你的选择，灰色圆点是社区平均分"
+          + (communityStatus === "available" ? participation() : ""),
+        state: "normal",
+      };
+    }
+    if (communityStatus === "unknown") {
+      return {
+        text: `你的投票：${formatStatusScore(userVotePosition)}　社区平均加载中`,
+        state: "normal",
+      };
+    }
+    return {
+      text: `你的投票：${formatStatusScore(userVotePosition)}`
+        + `　社区平均：${formatStatusScore(communityLevel)}`
+        + participation(),
+      state: "normal",
+    };
+  };
+
+  const applyStatus = (status: StatusText): void => {
+    voteStatus.dataset.state = status.state;
+    voteStatus.textContent = status.text;
+  };
 
   const renderVoteStatus = (): void => {
     if (actionStatus === "error") {
@@ -213,40 +274,30 @@ export function mountApp(
       return;
     }
 
-    if (actionStatus === "cooldown") {
-      voteStatus.dataset.state = "cooldown";
-      const totalMinutes = Math.ceil(cooldownRemainingMs / 60_000);
-      const hours = Math.floor(totalMinutes / 60);
-      const minutes = totalMinutes % 60;
-      const duration = hours > 0 && minutes > 0
-        ? `${hours} 小时 ${minutes} 分`
-        : hours > 0
-          ? `${hours} 小时`
-          : `${minutes} 分`;
-      voteStatus.textContent = `还需 ${duration}才能修改投票`;
+    if (actionStatus === "cooldown" && cooldownBannerVisible) {
+      applyStatus(cooldownStatusText());
       return;
     }
 
-    if (communityStatus === "unavailable") {
-      voteStatus.dataset.state = "community-unavailable";
-      voteStatus.textContent = "社区数据暂时无法加载";
+    applyStatus(normalStatusText());
+  };
+
+  const hideCooldownBanner = (): void => {
+    cooldownBannerTimer = null;
+    cooldownBannerVisible = false;
+    if (actionStatus !== "cooldown") {
+      renderVoteStatus();
       return;
     }
 
-    voteStatus.dataset.state = "normal";
-    if (userVotePosition === null) {
-      voteStatus.textContent = "红色圆点是你的选择，灰色圆点是社区平均分";
-      return;
-    }
-
-    if (communityStatus === "unknown") {
-      voteStatus.textContent = `你的投票：${formatStatusScore(userVotePosition)}　社区平均加载中`;
-      return;
-    }
-
-    voteStatus.textContent =
-      `你的投票：${formatStatusScore(userVotePosition)}`
-      + `　社区平均：${formatStatusScore(communityLevel)}`;
+    const status = normalStatusText();
+    voteStatus.dataset.state = status.state;
+    voteStatus.style.opacity = "0";
+    window.setTimeout(() => {
+      if (!voteStatus.isConnected) return;
+      voteStatus.textContent = status.text;
+      voteStatus.style.opacity = "";
+    }, FADE_MS);
   };
 
   const updateVotePoints = (element: NumberFlow, value: number): void => {
@@ -346,16 +397,27 @@ export function mountApp(
       communityGhostThumb.hidden = true;
       renderVoteStatus();
     },
-    setCooldown(remainingMs) {
+    setCooldown(remainingMs, announce = false) {
       if (remainingMs <= 0) {
         actionStatus = "normal";
         cooldownRemainingMs = 0;
+        if (cooldownBannerTimer !== null) {
+          clearTimeout(cooldownBannerTimer);
+          cooldownBannerTimer = null;
+        }
+        cooldownBannerVisible = false;
         renderVoteStatus();
         return;
       }
 
       actionStatus = "cooldown";
       cooldownRemainingMs = remainingMs;
+      if (announce && !cooldownBannerVisible) {
+        cooldownBannerVisible = true;
+        renderVoteStatus();
+        cooldownBannerTimer = setTimeout(hideCooldownBanner, ANNOUNCE_MS);
+        return;
+      }
       renderVoteStatus();
     },
     setVoteError() {
@@ -382,6 +444,8 @@ export function mountApp(
         setScore(userVotePosition ?? communityLevel);
       }
       controller.setVotingState({
+        voterCount: scoreData.voterCount,
+        todayVoterCount: scoreData.todayVoterCount,
         positiveCount: scoreData.positiveCount,
         negativeCount: scoreData.negativeCount,
         neutralCount: scoreData.neutralCount,
@@ -394,10 +458,13 @@ export function mountApp(
       renderVoteStatus();
     },
     setVotingState(state) {
-      updateVotePoints(voteCountUp, state.positivePoints);
-      updateVotePoints(voteCountDown, Math.abs(state.negativePoints));
-      voteCountUp.setAttribute("aria-label", `正向累计票值 ${state.positivePoints}`);
-      voteCountDown.setAttribute("aria-label", `负向累计票值 ${state.negativePoints}`);
+      communityTodayVoters = state.todayVoterCount;
+      communityTotalVoters = state.voterCount;
+      updateVotePoints(voteCountUp, state.positiveCount);
+      updateVotePoints(voteCountDown, state.negativeCount);
+      voteCountUp.setAttribute("aria-label", `高强度投票人数 ${state.positiveCount}`);
+      voteCountDown.setAttribute("aria-label", `低强度投票人数 ${state.negativeCount}`);
+      renderVoteStatus();
     },
     setTimelineEvents(events) {
       const nodes = events.map((event) => {

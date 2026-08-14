@@ -17,6 +17,7 @@ function createEnv(overrides: Partial<Env> = {}): Env {
     first: vi.fn().mockResolvedValue({
       voters: 0,
       score: null,
+      today_voters: 0,
       positive_count: null,
       negative_count: null,
       neutral_count: null,
@@ -49,6 +50,7 @@ function createSuccessfulVoteEnv(): Env {
   const aggregate = {
     voters: 1,
     score: 5,
+    today_voters: 1,
     positive_count: 1,
     negative_count: 0,
     neutral_count: 0,

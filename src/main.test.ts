@@ -142,6 +142,7 @@ describe("static Pages bootstrap", () => {
       score: 2.5,
       stage: "梁圣",
       voterCount: 4,
+      todayVoterCount: 2,
       positiveCount: 3,
       negativeCount: 1,
       neutralCount: 0,
@@ -188,7 +189,7 @@ describe("static Pages bootstrap", () => {
     }));
     mocks.configured = true;
     mocks.fetchScore.mockResolvedValue({
-      score: 2.5, stage: "梁圣", voterCount: 4,
+      score: 2.5, stage: "梁圣", voterCount: 4, todayVoterCount: 2,
       positiveCount: 3, negativeCount: 1, neutralCount: 0,
       positivePoints: 13, negativePoints: -3,
     });
@@ -198,7 +199,7 @@ describe("static Pages bootstrap", () => {
     await mocks.controller.onVote?.(11);
 
     expect(mocks.controller.restoreVote).toHaveBeenLastCalledWith(6);
-    expect(mocks.controller.setCooldown).toHaveBeenLastCalledWith(60_000);
+    expect(mocks.controller.setCooldown).toHaveBeenLastCalledWith(60_000, true);
     expect(mocks.submitVote).not.toHaveBeenCalled();
     expect(mocks.fingerprintLoad).not.toHaveBeenCalled();
     await vi.advanceTimersByTimeAsync(60_000);
@@ -210,7 +211,7 @@ describe("static Pages bootstrap", () => {
     localStorage.setItem("liang-slider:vote:v3", raw);
     mocks.configured = true;
     mocks.fetchScore.mockResolvedValue({
-      score: 2.5, stage: "梁圣", voterCount: 4,
+      score: 2.5, stage: "梁圣", voterCount: 4, todayVoterCount: 2,
       positiveCount: 3, negativeCount: 1, neutralCount: 0,
       positivePoints: 13, negativePoints: -3,
     });
@@ -231,7 +232,7 @@ describe("static Pages bootstrap", () => {
     localStorage.setItem("liang-slider:vote:v3", raw);
     mocks.configured = true;
     const community = {
-      score: 3, stage: "梁圣", voterCount: 5,
+      score: 3, stage: "梁圣", voterCount: 5, todayVoterCount: 1,
       positiveCount: 4, negativeCount: 1, neutralCount: 0,
       positivePoints: 18, negativePoints: -3,
     } as const;
@@ -253,19 +254,19 @@ describe("static Pages bootstrap", () => {
     );
     expect(mocks.controller.setUserVotePosition).toHaveBeenLastCalledWith(7);
     expect(mocks.controller.restoreVote).toHaveBeenLastCalledWith(7);
-    expect(mocks.controller.setCooldown).toHaveBeenLastCalledWith(90_000);
+    expect(mocks.controller.setCooldown).toHaveBeenLastCalledWith(90_000, true);
     await mocks.controller.onVote?.(-12);
     expect(mocks.submitVote).toHaveBeenCalledTimes(1);
     expect(mocks.fingerprintLoad).toHaveBeenCalledTimes(1);
     expect(mocks.controller.restoreVote).toHaveBeenLastCalledWith(7);
-    expect(mocks.controller.setCooldown).toHaveBeenLastCalledWith(90_000);
+    expect(mocks.controller.setCooldown).toHaveBeenLastCalledWith(90_000, true);
     expect(localStorage.getItem("liang-slider:vote:v3")).toBe(raw);
   });
 
   it("新身份被限流时恢复后备位置并显示提交错误", async () => {
     mocks.configured = true;
     const community = {
-      score: 3, stage: "梁圣", voterCount: 5,
+      score: 3, stage: "梁圣", voterCount: 5, todayVoterCount: 1,
       positiveCount: 4, negativeCount: 1, neutralCount: 0,
       positivePoints: 18, negativePoints: -3,
     } as const;
@@ -291,7 +292,7 @@ describe("static Pages bootstrap", () => {
     localStorage.setItem("liang-slider:vote:v3", JSON.stringify({ position: 6, nextVoteAt: 0 }));
     mocks.configured = true;
     mocks.fetchScore.mockResolvedValue({
-      score: 2.5, stage: "梁圣", voterCount: 4,
+      score: 2.5, stage: "梁圣", voterCount: 4, todayVoterCount: 2,
       positiveCount: 3, negativeCount: 1, neutralCount: 0,
       positivePoints: 13, negativePoints: -3,
     });
@@ -347,13 +348,13 @@ describe("static Pages bootstrap", () => {
     vi.setSystemTime(new Date("2026-08-14T00:00:00.000Z"));
     mocks.configured = true;
     mocks.fetchScore.mockResolvedValue({
-      score: 3, stage: "梁圣", voterCount: 5,
+      score: 3, stage: "梁圣", voterCount: 5, todayVoterCount: 1,
       positiveCount: 4, negativeCount: 1, neutralCount: 0,
       positivePoints: 18, negativePoints: -3,
     });
     mocks.submitVote
       .mockResolvedValueOnce({
-        score: 6, stage: "梁圣", voterCount: 5,
+        score: 6, stage: "梁圣", voterCount: 5, todayVoterCount: 1,
         positiveCount: 4, negativeCount: 1, neutralCount: 0,
         positivePoints: 33, negativePoints: -3,
         accepted: true, userPosition: 6, nextVoteAt: Date.now() + 60_000,
@@ -375,7 +376,7 @@ describe("static Pages bootstrap", () => {
     let resolveVote!: (result: VoteResult) => void;
     mocks.configured = true;
     const score = {
-      score: 3, stage: "梁圣", voterCount: 5,
+      score: 3, stage: "梁圣", voterCount: 5, todayVoterCount: 1,
       positiveCount: 4, negativeCount: 1, neutralCount: 0,
       positivePoints: 18, negativePoints: -3,
     } as const;
@@ -422,7 +423,7 @@ describe("static Pages bootstrap", () => {
     await import("./main");
     await mocks.controller.onVote?.(10);
     resolveScore({
-      score: 2.5, stage: "梁圣", voterCount: 4,
+      score: 2.5, stage: "梁圣", voterCount: 4, todayVoterCount: 2,
       positiveCount: 3, negativeCount: 1, neutralCount: 0,
       positivePoints: 13, negativePoints: -3,
     });
@@ -443,7 +444,7 @@ describe("static Pages bootstrap", () => {
       resolveScore = resolve;
     }));
     const voteScore = {
-      score: 6, stage: "梁圣", voterCount: 5,
+      score: 6, stage: "梁圣", voterCount: 5, todayVoterCount: 1,
       positiveCount: 4, negativeCount: 1, neutralCount: 0,
       positivePoints: 33, negativePoints: -3,
     } as const;
@@ -457,7 +458,7 @@ describe("static Pages bootstrap", () => {
     await import("./main");
     await mocks.controller.onVote?.(6);
     resolveScore({
-      score: 2.5, stage: "梁圣", voterCount: 4,
+      score: 2.5, stage: "梁圣", voterCount: 4, todayVoterCount: 2,
       positiveCount: 3, negativeCount: 1, neutralCount: 0,
       positivePoints: 13, negativePoints: -3,
     });
@@ -479,7 +480,7 @@ describe("static Pages bootstrap", () => {
       rejectScore = reject;
     }));
     const voteScore = {
-      score: 6, stage: "梁圣", voterCount: 5,
+      score: 6, stage: "梁圣", voterCount: 5, todayVoterCount: 1,
       positiveCount: 4, negativeCount: 1, neutralCount: 0,
       positivePoints: 33, negativePoints: -3,
     } as const;
@@ -512,7 +513,7 @@ describe("static Pages bootstrap", () => {
     await import("./main");
     await mocks.controller.onVote?.(8);
     resolveScore({
-      score: 2.5, stage: "梁圣", voterCount: 4,
+      score: 2.5, stage: "梁圣", voterCount: 4, todayVoterCount: 2,
       positiveCount: 3, negativeCount: 1, neutralCount: 0,
       positivePoints: 13, negativePoints: -3,
     });

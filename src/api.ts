@@ -5,6 +5,7 @@ export interface ScoreData {
   score: number;
   stage: string;
   voterCount: number;
+  todayVoterCount: number;
   positiveCount: number;
   negativeCount: number;
   neutralCount: number;
@@ -119,6 +120,7 @@ function isScoreData(value: unknown): value is ScoreData {
   if (!isRecord(value) || !isValidScoreAndStage(value)) return false;
   const {
     voterCount,
+    todayVoterCount,
     positiveCount,
     negativeCount,
     neutralCount,
@@ -127,10 +129,12 @@ function isScoreData(value: unknown): value is ScoreData {
   } = value;
   if (
     !isNonNegativeSafeInteger(voterCount)
+    || !isNonNegativeSafeInteger(todayVoterCount)
     || !isNonNegativeSafeInteger(positiveCount)
     || !isNonNegativeSafeInteger(negativeCount)
     || !isNonNegativeSafeInteger(neutralCount)
     || positiveCount + negativeCount + neutralCount !== voterCount
+    || todayVoterCount > voterCount
     || !isSafeInteger(positivePoints)
     || !isSafeInteger(negativePoints)
   ) {

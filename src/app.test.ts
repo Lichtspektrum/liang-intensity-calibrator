@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { formatVoteCount, mountApp } from "./app";
 
@@ -67,6 +67,7 @@ describe("liang slider app", () => {
       score: 2.5,
       stage: "梁圣",
       voterCount: 4,
+      todayVoterCount: 2,
       positiveCount: 3,
       negativeCount: 1,
       neutralCount: 0,
@@ -95,13 +96,13 @@ describe("liang slider app", () => {
     const status = root.querySelector<HTMLElement>(".vote-status")!;
 
     controller.setReady();
-    controller.setCooldown(2 * 60 * 60 * 1_000 + 18 * 60 * 1_000);
+    controller.setCooldown(2 * 60 * 60 * 1_000 + 18 * 60 * 1_000, true);
     expect(status.textContent).toBe("还需 2 小时 18 分才能修改投票");
     expect(controller.slider.disabled).toBe(false);
 
-    controller.setCooldown(18 * 60 * 1_000);
+    controller.setCooldown(18 * 60 * 1_000, true);
     expect(status.textContent).toBe("还需 18 分才能修改投票");
-    controller.setCooldown(2 * 60 * 60 * 1_000);
+    controller.setCooldown(2 * 60 * 60 * 1_000, true);
     expect(status.textContent).toBe("还需 2 小时才能修改投票");
 
     controller.setVoteError();
@@ -119,7 +120,7 @@ describe("liang slider app", () => {
     };
     controller.setReady();
     controller.setUserVotePosition(6);
-    controller.setCooldown(60_000);
+    controller.setCooldown(60_000, true);
 
     const slider = controller.slider;
     slider.value = "11";
@@ -147,26 +148,79 @@ describe("liang slider app", () => {
     );
 
     controller.setCommunityScore({
-      score: 2.5, stage: "梁圣", voterCount: 4,
+      score: 2.5, stage: "梁圣", voterCount: 4, todayVoterCount: 2,
       positiveCount: 3, negativeCount: 1, neutralCount: 0,
       positivePoints: 13, negativePoints: -3,
     });
     expect(root.querySelector(".vote-status")?.textContent).toBe(
-      "你的投票：+6　社区平均：+2.5",
+      "你的投票：+6　社区平均：+2.5　今日 2 人投票　累计 4 人",
+    );
+  });
+
+  it("投票提交后 2 秒淡出冷却提示，淡入常态统计", async () => {
+    vi.useFakeTimers();
+    try {
+      const controller = mountApp(root);
+      const status = root.querySelector<HTMLElement>(".vote-status")!;
+      controller.setUserVotePosition(6);
+      controller.setCommunityScore({
+        score: 2.5, stage: "梁圣", voterCount: 4, todayVoterCount: 2,
+        positiveCount: 3, negativeCount: 1, neutralCount: 0,
+        positivePoints: 13, negativePoints: -3,
+      });
+      controller.setCooldown(2 * 60 * 60 * 1_000, true);
+
+      expect(status.textContent).toBe("还需 2 小时才能修改投票");
+      expect(status.style.opacity).toBe("");
+
+      await vi.advanceTimersByTimeAsync(2000);
+      // 2 秒后开始淡出：文案尚未切换，但已透明
+      expect(status.style.opacity).toBe("0");
+      expect(status.textContent).toBe("还需 2 小时才能修改投票");
+
+      await vi.advanceTimersByTimeAsync(250);
+      // 淡出完成后换成常态文案并淡入
+      expect(status.textContent).toBe(
+        "你的投票：+6　社区平均：+2.5　今日 2 人投票　累计 4 人",
+      );
+      expect(status.style.opacity).toBe("");
+
+      // 冷却期间的分钟级更新不再弹冷却提示
+      controller.setCooldown(30 * 60 * 1_000);
+      expect(status.textContent).toBe(
+        "你的投票：+6　社区平均：+2.5　今日 2 人投票　累计 4 人",
+      );
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("页面加载恢复冷却时不弹提示，直接显示常态统计", () => {
+    const controller = mountApp(root);
+    controller.setUserVotePosition(6);
+    controller.setCommunityScore({
+      score: 2.5, stage: "梁圣", voterCount: 4, todayVoterCount: 2,
+      positiveCount: 3, negativeCount: 1, neutralCount: 0,
+      positivePoints: 13, negativePoints: -3,
+    });
+    controller.setCooldown(60 * 1_000);
+
+    expect(root.querySelector(".vote-status")?.textContent).toBe(
+      "你的投票：+6　社区平均：+2.5　今日 2 人投票　累计 4 人",
     );
   });
 
   it("社区响应会补上灰点和统计，但不覆盖冷却或错误状态", () => {
     const controller = mountApp(root);
     const score = {
-      score: 2.5, stage: "梁圣", voterCount: 4,
+      score: 2.5, stage: "梁圣", voterCount: 4, todayVoterCount: 2,
       positiveCount: 3, negativeCount: 1, neutralCount: 0,
       positivePoints: 13, negativePoints: -3,
     };
     controller.setReady();
     controller.setUserVotePosition(6);
     controller.restoreVote(6);
-    controller.setCooldown(60_000);
+    controller.setCooldown(60_000, true);
     controller.setCommunityUnavailable();
     expect(root.querySelector(".vote-status")?.textContent).toBe("还需 1 分才能修改投票");
     expect(root.querySelector<HTMLElement>(".community-ghost-thumb")?.hidden).toBe(true);
@@ -176,7 +230,9 @@ describe("liang slider app", () => {
 
     expect(controller.score).toBe(6);
     expect(root.querySelector<HTMLElement>(".community-ghost-thumb")?.hidden).toBe(false);
-    expect(root.querySelector(".vote-status")?.textContent).toBe("你的投票：+6　社区平均：+2.5");
+    expect(root.querySelector(".vote-status")?.textContent).toBe(
+      "你的投票：+6　社区平均：+2.5　今日 2 人投票　累计 4 人",
+    );
 
     controller.setVoteError();
     controller.setCommunityUnavailable();
@@ -201,7 +257,7 @@ describe("liang slider app", () => {
         await firstResponse;
         controller.setUserVotePosition(7);
         controller.setCommunityScore({
-          score: 3, stage: "梁圣", voterCount: 5,
+          score: 3, stage: "梁圣", voterCount: 5, todayVoterCount: 1,
           positiveCount: 4, negativeCount: 1, neutralCount: 0,
           positivePoints: 18, negativePoints: -3,
         });
@@ -241,7 +297,7 @@ describe("liang slider app", () => {
       await voteResponse;
       controller.setUserVotePosition(7);
       controller.setCommunityScore({
-        score: 3, stage: "梁圣", voterCount: 5,
+        score: 3, stage: "梁圣", voterCount: 5, todayVoterCount: 1,
         positiveCount: 4, negativeCount: 1, neutralCount: 0,
         positivePoints: 18, negativePoints: -3,
       });
@@ -307,6 +363,8 @@ describe("liang slider app", () => {
     slider.dispatchEvent(new Event("input", { bubbles: true }));
     slider.dispatchEvent(new Event("change", { bubbles: true }));
     controller.setVotingState({
+      voterCount: 1_110,
+      todayVoterCount: 100,
       positiveCount: 1_100,
       negativeCount: 8,
       neutralCount: 2,
@@ -316,8 +374,8 @@ describe("liang slider app", () => {
 
     expect(positions).toEqual([9]);
     expect(slider.value).toBe("8.6");
-    expect(root.querySelector(".vote-total--up number-flow")?.getAttribute("value")).toBe("33000");
-    expect(root.querySelector(".vote-total--down number-flow")?.getAttribute("value")).toBe("40");
+    expect(root.querySelector(".vote-total--up number-flow")?.getAttribute("value")).toBe("1100");
+    expect(root.querySelector(".vote-total--down number-flow")?.getAttribute("value")).toBe("8");
     expect(root.querySelector(".vote-btn")).toBeNull();
   });
 
@@ -333,6 +391,7 @@ describe("liang slider app", () => {
       positivePoints: 15,
       negativePoints: 0,
       voterCount: 2,
+      todayVoterCount: 2,
     });
     controller.setUserVotePosition(15);
 
@@ -342,7 +401,9 @@ describe("liang slider app", () => {
 
     expect(slider.value).toBe("7.5");
     expect(root.querySelector(".stage-name")?.textContent).toBe("梁圣");
-    expect(status.textContent).toBe("你的投票：+15　社区平均：+7.5");
+    expect(status.textContent).toBe(
+      "你的投票：+15　社区平均：+7.5　今日 2 人投票　累计 2 人",
+    );
     expect(ghostThumb.style.getPropertyValue("--community-position")).toBe("75");
   });
 
@@ -359,10 +420,11 @@ describe("liang slider app", () => {
       positivePoints: 12,
       negativePoints: -3,
       voterCount: 3,
+      todayVoterCount: 1,
     });
 
     expect(root.querySelector(".vote-status")?.textContent).toBe(
-      "你的投票：+6　社区平均：+2.4",
+      "你的投票：+6　社区平均：+2.4　今日 1 人投票　累计 3 人",
     );
     expect(controller.score).toBe(6);
   });

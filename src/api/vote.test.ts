@@ -62,11 +62,15 @@ function createVoteEnv(initialRows: VoterRow[] = [], options: VoteEnvOptions = {
           }
           if (normalized.includes("AVG(position) AS score")) {
             const active = [...rows.values()];
+            const todayStart = values[0] as number | undefined;
             return {
               voters: active.length,
               score: active.length
                 ? active.reduce((total, row) => total + row.position, 0) / active.length
                 : null,
+              today_voters: active.filter(
+                (row) => row.updated_at >= (todayStart ?? -Infinity),
+              ).length,
               positive_count: active.filter((row) => row.position > 0).length,
               negative_count: active.filter((row) => row.position < 0).length,
               neutral_count: active.filter((row) => row.position === 0).length,
@@ -189,6 +193,7 @@ describe("persistent ballots", () => {
       score: 6,
       stage: "梁圣",
       voterCount: 1,
+      todayVoterCount: 1,
       positiveCount: 1,
       negativeCount: 0,
       neutralCount: 0,
@@ -234,6 +239,7 @@ describe("persistent ballots", () => {
       score: -4,
       stage: "牢梁",
       voterCount: 1,
+      todayVoterCount: 1,
       positiveCount: 0,
       negativeCount: 1,
       neutralCount: 0,

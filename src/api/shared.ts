@@ -56,6 +56,7 @@ export interface ScoreResponse {
   score: number;
   stage: string;
   voterCount: number;
+  todayVoterCount: number;
   positiveCount: number;
   negativeCount: number;
   neutralCount: number;
@@ -80,6 +81,7 @@ interface VoteCommunityFields {
   score: number;
   stage: string;
   voterCount: number;
+  todayVoterCount: number;
   positiveCount: number;
   negativeCount: number;
   neutralCount: number;
@@ -120,6 +122,12 @@ export function todayInBeijing(): string {
 
 export function previousBeijingDate(now = Date.now()): string {
   return beijingDate(now - 24 * 60 * 60 * 1000);
+}
+
+const MS_PER_DAY = 24 * 60 * 60 * 1000;
+
+export function startOfTodayBeijingMs(now = Date.now()): number {
+  return Math.floor((now + BEIJING_OFFSET_MS) / MS_PER_DAY) * MS_PER_DAY - BEIJING_OFFSET_MS;
 }
 
 function beijingDate(timestamp: number): string {
