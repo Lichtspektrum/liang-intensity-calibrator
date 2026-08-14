@@ -18,18 +18,34 @@ describe("public static worker", () => {
     expect(config.compatibility_date).toBe("2026-08-08");
   });
 
-  it("将请求交给静态资源绑定", async () => {
+  it("使用静态资源模板渲染首页", async () => {
     const requestedPaths: string[] = [];
     const response = await worker.fetch(new Request("https://example.com/"), {
       ASSETS: {
         fetch(request: Request) {
           requestedPaths.push(new URL(request.url).pathname);
-          return Promise.resolve(new Response("ok"));
+          return Promise.resolve(
+            new Response("<html><head></head><body><main id=\"app\"></main></body></html>"),
+          );
         },
       },
-    });
+      KV: {
+        get: () => Promise.resolve(null),
+        put: () => Promise.resolve(),
+      },
+      DB: {
+        prepare: () => ({
+          bind() {
+            return this;
+          },
+          first: () => Promise.resolve(null),
+          all: () => Promise.resolve({ results: [] }),
+        }),
+      },
+    } as unknown);
 
     expect(response.status).toBe(200);
     expect(requestedPaths).toEqual(["/"]);
+    await expect(response.text()).resolves.toContain('id="liang-initial-state"');
   });
 });

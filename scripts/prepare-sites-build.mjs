@@ -7,7 +7,7 @@ const clientDir = resolve(dist, "client");
 const indexHtml = resolve(clientDir, "index.html");
 const serverDir = resolve(dist, "server");
 const hostingDir = resolve(dist, ".openai");
-const workerDir = resolve(dist, "liang_slider");
+const workerDir = resolve(dist, "ds_liang");
 const workerEntry = resolve(workerDir, "index.js");
 const workerConfig = resolve(workerDir, "wrangler.json");
 
