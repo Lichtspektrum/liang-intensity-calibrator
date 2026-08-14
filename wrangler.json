@@ -1,9 +1,20 @@
 {
-  "name": "liang-slider",
+  "name": "liang-intensity-api",
   "compatibility_date": "2026-08-08",
   "main": "./src/worker.ts",
-  "assets": {
-    "binding": "ASSETS",
-    "not_found_handling": "single-page-application"
+  "workers_dev": true,
+  "vars": {
+    "ALLOWED_ORIGINS": "https://lichtspektrum.github.io,http://127.0.0.1:5173,http://127.0.0.1:5174"
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "liang-intensity-db",
+      "database_id": "f5abb4d0-552e-49ef-94b6-78331c6562e2",
+      "migrations_dir": "./migrations"
+    }
+  ],
+  "triggers": {
+    "crons": ["5 16 * * *"]
   }
 }

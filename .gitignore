@@ -1,6 +1,8 @@
 .worktrees/
 node_modules/
+.dev.vars
 dist/
+dist-worker/
 dist-pages/
 test-results/
 playwright-report/

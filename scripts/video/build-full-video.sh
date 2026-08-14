@@ -4,8 +4,8 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
-SOURCE_DIR="$PROJECT_ROOT/public/frames"
-OUTPUT_DIR="$PROJECT_ROOT/public/video"
+SOURCE_DIR="$PROJECT_ROOT/media/source-frames"
+OUTPUT_DIR="$PROJECT_ROOT/media"
 WORK_DIR="$(mktemp -d /tmp/liang-full-video.XXXXXX)"
 RIFE_MODEL="${RIFE_MODEL:-$(dirname "$RIFE_BIN")/rife-v4.6}"
 

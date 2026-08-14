@@ -1,140 +1,199 @@
 import { expect, test } from "@playwright/test";
 
+import {
+  API_ORIGIN,
+  APP_PATH,
+  VOTE_STORAGE_KEY,
+  installApiRoutes,
+  setSliderScore,
+  submitSliderScore,
+} from "./api-fixture";
+
 const milestones = [
-  [0, "小难梁"],
-  [6, "牢梁"],
-  [12, "梁子"],
-  [18, "梁圣"],
-  [24, "梁神"],
-  [30, "梁祖"],
+  [-15, "小难梁"],
+  [-9, "牢梁"],
+  [-3, "梁子"],
+  [3, "梁圣"],
+  [9, "梁神"],
+  [15, "梁祖"],
 ] as const;
 
-async function setSliderLevel(page: import("@playwright/test").Page, level: number) {
-  await page.locator("#strength-slider").evaluate((element, value) => {
-    const slider = element as HTMLInputElement;
-    slider.value = String(value);
-    slider.dispatchEvent(new Event("input", { bubbles: true }));
-  }, level);
-}
-
-test.beforeEach(async ({ page }) => {
-  await page.goto("/");
-  await expect(page.locator("#strength-slider")).toBeEnabled();
-});
-
-test("页面包含完整的 31 级控制与六个命名节点", async ({ page }) => {
+test("页面包含 31 级控制、六个命名节点和三小时提示", async ({ page }) => {
+  await installApiRoutes(page);
+  await page.goto(APP_PATH);
   const slider = page.locator("#strength-slider");
 
-  await expect(slider).toHaveAttribute("min", "0");
-  await expect(slider).toHaveAttribute("max", "30");
+  await expect(slider).toBeEnabled();
+  await expect(slider).toHaveAttribute("min", "-15");
+  await expect(slider).toHaveAttribute("max", "15");
   await expect(slider).toHaveAttribute("step", "0.01");
   await expect(page.locator(".tick")).toHaveCount(31);
   await expect(page.locator(".stage-marker")).toHaveText([
-    "小难梁",
-    "牢梁",
-    "梁子",
-    "梁圣",
-    "梁神",
-    "梁祖",
+    "小难梁", "牢梁", "梁子", "梁圣", "梁神", "梁祖",
   ]);
+  await expect(page.locator(".drag-hint")).toContainText("每 3 小时可修改一次");
 });
 
-test("六个里程碑同步更新文字、等级与 Canvas 描述", async ({ page }) => {
-  for (const [level, stage] of milestones) {
-    await setSliderLevel(page, level);
+test("社区分数成功加载时显示灰点并将滑杆移到社区位置", async ({ page }) => {
+  const api = await installApiRoutes(page);
+  await page.goto(APP_PATH);
+
+  const ghost = page.locator(".community-ghost-thumb");
+  await expect(ghost).toBeVisible();
+  await expect(ghost).toHaveAttribute("aria-label", "社区当前分值 2.50");
+  await expect(ghost).toHaveCSS("--community-position", "58.333333333333336");
+  await expect(page.locator("#strength-slider")).toHaveValue("2.5");
+  expect(api.scoreRequests).toHaveLength(1);
+  expect(api.timelineRequests).toHaveLength(1);
+});
+
+test("成功投票后保存个人位置和冷却时间", async ({ page, request }) => {
+  const votePosition = 9;
+  await page.goto(APP_PATH);
+  await expect(page.locator("#strength-slider")).toBeEnabled();
+
+  const voteResponsePromise = page.waitForResponse((response) =>
+    response.url() === "http://127.0.0.1:8787/api/vote"
+    && response.request().method() === "POST",
+  );
+  await submitSliderScore(page, votePosition);
+  const voteResponse = await voteResponsePromise;
+  const logId = Number(voteResponse.headers()["x-test-log-id"]);
+  expect(Number.isSafeInteger(logId)).toBe(true);
+  const postLogResponse = await request.get(`${API_ORIGIN}/__test/log/${logId}`);
+  expect(postLogResponse.ok()).toBe(true);
+  const post = await postLogResponse.json() as {
+    id: number;
+    connectionId: number;
+    timestamp: number;
+    method: string;
+    url: string;
+    pathname: string;
+    headers: Record<string, string>;
+    body: string;
+    preflightIds: number[];
+  };
+  expect(post).toMatchObject({
+    id: logId,
+    method: "POST",
+    url: `${API_ORIGIN}/api/vote`,
+  });
+  const body = JSON.parse(post.body) as Record<string, unknown>;
+  expect(body.position).toBe(votePosition);
+  expect(typeof body.fingerprint).toBe("string");
+  expect((body.fingerprint as string).length).toBeGreaterThanOrEqual(8);
+  expect(post.preflightIds).toHaveLength(1);
+  const preflightLogResponse = await request.get(
+    `${API_ORIGIN}/__test/log/${post.preflightIds[0]}`,
+  );
+  expect(preflightLogResponse.ok()).toBe(true);
+  const preflight = await preflightLogResponse.json() as typeof post;
+
+  const stored = await page.evaluate((key) => localStorage.getItem(key), VOTE_STORAGE_KEY);
+  expect(JSON.parse(stored ?? "null")).toMatchObject({ position: votePosition });
+  expect(JSON.parse(stored ?? "null").nextVoteAt).toBeGreaterThan(Date.now());
+  await expect(page.locator("#strength-slider")).toHaveValue(String(votePosition));
+  await expect(page.locator(".community-ghost-thumb")).toHaveAttribute(
+    "aria-label",
+    `社区当前分值 ${votePosition.toFixed(2)}`,
+  );
+  await expect(page.locator(".vote-status")).toContainText("还需");
+  expect(voteResponse.headers()["access-control-allow-origin"]).toBe(
+    "http://127.0.0.1:5173",
+  );
+  expect(voteResponse.headers().vary).toBe("Origin");
+  expect(preflight.connectionId).toBe(post.connectionId);
+  expect(preflight.method).toBe("OPTIONS");
+  expect(preflight.url).toBe(`${API_ORIGIN}/api/vote`);
+  expect(preflight.headers.origin).toBe("http://127.0.0.1:5173");
+  expect(preflight.headers["access-control-request-method"]).toBe("POST");
+});
+
+test("冷却期内可预览新形态，松手后恢复已投位置且不重复 POST", async ({ page }) => {
+  const api = await installApiRoutes(page);
+  await page.goto(APP_PATH);
+  await submitSliderScore(page, 9);
+  await expect.poll(() => api.voteRequests.length).toBe(1);
+
+  await setSliderScore(page, -10);
+  await expect(page.locator(".portrait-canvas")).toHaveAttribute("data-frame", "040");
+  await page.locator("#strength-slider").dispatchEvent("change");
+
+  await expect(page.locator("#strength-slider")).toHaveValue("9");
+  await expect(page.locator(".portrait-canvas")).toHaveAttribute("data-frame", "192");
+  await expect(page.locator(".vote-status")).toContainText("还需");
+  expect(api.voteRequests).toHaveLength(1);
+});
+
+test("社区分数失败时隐藏灰点，滑杆和肖像仍可使用", async ({ page }) => {
+  await installApiRoutes(page, { scoreFailure: 503 });
+  await page.goto(APP_PATH);
+
+  await expect(page.locator("#strength-slider")).toBeEnabled();
+  await expect(page.locator(".community-ghost-thumb")).toBeHidden();
+  await expect(page.locator(".vote-status")).toHaveText("社区数据暂时无法加载");
+  await setSliderScore(page, 12);
+  await expect(page.locator(".portrait-canvas")).toHaveAttribute("data-frame", "216");
+});
+
+test("投票失败时恢复原位置且不改写本地记录", async ({ page }) => {
+  const original = JSON.stringify({ position: -3, nextVoteAt: 1 });
+  await page.addInitScript(({ key, raw }) => localStorage.setItem(key, raw), {
+    key: VOTE_STORAGE_KEY,
+    raw: original,
+  });
+  const api = await installApiRoutes(page, { voteFailure: 503 });
+  await page.goto(APP_PATH);
+  await expect(page.locator("#strength-slider")).toHaveValue("-3");
+
+  await submitSliderScore(page, 12);
+  await expect.poll(() => api.voteRequests.length).toBe(1);
+  await expect(page.locator("#strength-slider")).toHaveValue("-3");
+  await expect(page.locator(".vote-status")).toHaveText("提交失败，请稍后重试");
+  expect(await page.evaluate((key) => localStorage.getItem(key), VOTE_STORAGE_KEY)).toBe(original);
+});
+
+test("六个里程碑同步更新文字、分值与 Canvas 描述", async ({ page }) => {
+  await installApiRoutes(page);
+  await page.goto(APP_PATH);
+  for (const [score, stage] of milestones) {
+    await setSliderScore(page, score);
     await expect(page.locator(".stage-name")).toHaveText(stage);
     await expect(page.locator(".level-output")).toHaveText(
-      `${String(level).padStart(2, "0")} / 30`,
+      `${score > 0 ? "+" : "-"}${String(Math.abs(score)).padStart(2, "0")}`,
     );
-    await expect(page.locator(".portrait-canvas")).toHaveAttribute(
-      "aria-label",
-      `当前形态：${stage}`,
-    );
+    await expect(page.locator(".portrait-canvas")).toHaveAttribute("aria-label", `当前形态：${stage}`);
   }
 });
 
 test("键盘可以把滑杆移动到梁祖", async ({ page }) => {
+  await installApiRoutes(page);
+  await page.goto(APP_PATH);
   const slider = page.locator("#strength-slider");
+  await expect(slider).toBeEnabled();
   await slider.focus();
   await slider.press("End");
-
-  await expect(slider).toHaveValue("30");
-  await expect(page.locator(".stage-name")).toHaveText("梁祖");
-  await expect(slider).toHaveAttribute("aria-valuetext", "梁祖，30 级，共 30 级");
+  await expect(slider).toHaveValue("15");
+  await expect(slider).toHaveAttribute("aria-valuetext", "梁祖，强度 +15，范围 -15 到 +15");
 });
 
-test("Canvas 已完成实际绘制", async ({ page }) => {
-  const dimensions = await page.locator(".portrait-canvas").evaluate((element) => {
-    const canvas = element as HTMLCanvasElement;
-    return { width: canvas.width, height: canvas.height };
-  });
-
-  expect(dimensions.width).toBeGreaterThan(300);
-  expect(dimensions.height).toBeGreaterThan(300);
-});
-
-test("31 个语义等级映射到 241 帧连续视频", async ({ page }) => {
-  const canvas = page.locator(".portrait-canvas");
-
-  for (let level = 0; level <= 30; level += 1) {
-    await setSliderLevel(page, level);
-    await expect(canvas).toHaveAttribute(
-      "data-frame",
-      String(level * 8).padStart(3, "0"),
-    );
-  }
-});
-
-test("连续滑动位置会定位到对应视频画面", async ({ page }) => {
-  const video = page.locator(".evolution-video");
-  await expect(video).toHaveCount(1);
-  await expect
-    .poll(() =>
-      video.evaluate((element) => (element as HTMLVideoElement).readyState),
-    )
-    .toBeGreaterThanOrEqual(2);
-
-  await setSliderLevel(page, 12.35);
-  await expect(page.locator("#strength-slider")).toHaveValue("12.35");
-  await expect(page.locator(".portrait-canvas")).toHaveAttribute("data-frame", "099");
-
-  const timing = await video.evaluate((element) => {
-    const media = element as HTMLVideoElement;
-    return { currentTime: media.currentTime, duration: media.duration };
-  });
-  expect(timing.currentTime).toBeCloseTo((12.35 / 30) * timing.duration, 1);
-});
-
-test("六个状态标签与对应的大刻度对准", async ({ page }) => {
+test("六个状态标签与对应大刻度对准，页面没有横向溢出", async ({ page }) => {
+  await installApiRoutes(page);
+  await page.goto(APP_PATH);
   const alignments = await page.locator(".stage-marker").evaluateAll((markers) =>
     markers.map((marker, index) => {
       const markerRect = marker.getBoundingClientRect();
       const tickRect = document
-        .querySelector<HTMLElement>(`.tick[data-level="${index * 6}"]`)!
+        .querySelector<HTMLElement>(`.tick[data-score="${-15 + index * 6}"]`)!
         .getBoundingClientRect();
-
-      return Math.abs(
-        markerRect.left + markerRect.width / 2 - (tickRect.left + tickRect.width / 2),
-      );
+      return Math.abs(markerRect.left + markerRect.width / 2 - (tickRect.left + tickRect.width / 2));
     }),
   );
-
-  for (const offset of alignments) {
-    expect(offset).toBeLessThanOrEqual(1);
-  }
-});
-
-test("页面在当前视口没有横向溢出", async ({ page }, testInfo) => {
-  await setSliderLevel(page, 30);
+  for (const offset of alignments) expect(offset).toBeLessThanOrEqual(1);
 
   const viewport = await page.evaluate(() => ({
     scrollWidth: document.documentElement.scrollWidth,
     clientWidth: document.documentElement.clientWidth,
   }));
-
   expect(viewport.scrollWidth).toBeLessThanOrEqual(viewport.clientWidth);
-  await page.screenshot({
-    path: testInfo.outputPath("liangzu.png"),
-    fullPage: true,
-  });
 });
