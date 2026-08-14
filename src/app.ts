@@ -272,9 +272,16 @@ export function mountApp(
                 </div>
                 <p class="chat-status" role="status" aria-live="polite"></p>
                 <form class="chat-form">
-                  <textarea id="chat-input" maxlength="2000" rows="3" placeholder="例如：我们应该先追求用户规模，还是继续投入底层模型？" required></textarea>
+                  <textarea id="chat-input" maxlength="2000" rows="3" placeholder="例如：我们应该先追求用户规模，还是继续投入底层模型？ Enter 发送，Shift+Enter 换行" required></textarea>
                   <p class="chat-privacy">由本项目 npm 安装的 OpenCode CLI 免费模型处理，无需模型 key。免费期内输入可能被用于改进模型，请勿提交隐私或机密信息。</p>
-                  <button class="chat-submit-btn" type="submit">校准并回答</button>
+                  <button class="chat-submit-btn" type="submit" aria-label="发送">
+                    <svg class="chat-submit-icon chat-submit-icon--send" viewBox="0 0 24 24" aria-hidden="true">
+                      <path d="M5 19 19 5M19 5H8.5M19 5v10.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+                    </svg>
+                    <svg class="chat-submit-icon chat-submit-icon--stop" viewBox="0 0 24 24" aria-hidden="true">
+                      <rect x="5.5" y="5.5" width="13" height="13" rx="2" fill="currentColor" />
+                    </svg>
+                  </button>
                 </form>
               </div>
             </div>
@@ -455,6 +462,13 @@ export function mountApp(
     if (!message) return;
     const controller = (root as HTMLElement & { _controller?: AppController })._controller;
     controller?.onChatSubmit?.(message);
+  });
+
+  // Enter 发送；Shift+Enter 换行；输入法组词回车不触发提交。
+  chatInput.addEventListener("keydown", (event) => {
+    if (event.key !== "Enter" || event.shiftKey || event.isComposing) return;
+    event.preventDefault();
+    chatForm.requestSubmit();
   });
 
   chatNewButton.addEventListener("click", () => {
@@ -695,6 +709,8 @@ export function mountApp(
     },
     setChatLoading(message) {
       chatSubmitButton.disabled = true;
+      chatSubmitButton.classList.add("is-loading");
+      chatSubmitButton.setAttribute("aria-label", "生成中");
       chatInput.disabled = true;
       chatInput.value = "";
       chatStatus.dataset.state = "loading";
@@ -711,6 +727,8 @@ export function mountApp(
     },
     setChatResult(result) {
       chatSubmitButton.disabled = false;
+      chatSubmitButton.classList.remove("is-loading");
+      chatSubmitButton.setAttribute("aria-label", "发送");
       chatInput.disabled = false;
       chatStatus.dataset.state = "ready";
       chatStatus.hidden = false;
@@ -722,6 +740,8 @@ export function mountApp(
     },
     setChatError(message) {
       chatSubmitButton.disabled = false;
+      chatSubmitButton.classList.remove("is-loading");
+      chatSubmitButton.setAttribute("aria-label", "发送");
       chatInput.disabled = false;
       chatThread.querySelector(".is-pending")?.remove();
       chatStatus.dataset.state = "error";

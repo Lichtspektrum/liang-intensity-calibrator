@@ -472,4 +472,64 @@ describe("liang slider app", () => {
     root.querySelector<HTMLButtonElement>(".chat-new-btn")?.click();
     expect(started).toEqual([1]);
   });
+
+  it("Enter 发送消息，Shift+Enter 与输入法组词不提交", () => {
+    const controller = mountApp(root);
+    const submitted: string[] = [];
+    controller.onChatSubmit = (message) => submitted.push(message);
+    const input = root.querySelector<HTMLTextAreaElement>("#chat-input")!;
+
+    input.value = "先做原创研究";
+    input.dispatchEvent(new KeyboardEvent("keydown", {
+      key: "Enter", bubbles: true, cancelable: true,
+    }));
+    expect(submitted).toEqual(["先做原创研究"]);
+
+    input.value = "换行内容";
+    input.dispatchEvent(new KeyboardEvent("keydown", {
+      key: "Enter", shiftKey: true, bubbles: true, cancelable: true,
+    }));
+    expect(submitted).toEqual(["先做原创研究"]);
+
+    input.value = "组词内容";
+    input.dispatchEvent(new KeyboardEvent("keydown", {
+      key: "Enter", isComposing: true, bubbles: true, cancelable: true,
+    }));
+    expect(submitted).toEqual(["先做原创研究"]);
+  });
+
+  it("生成中按钮变为方块图标，完成后恢复箭头", () => {
+    const controller = mountApp(root);
+    const button = root.querySelector<HTMLButtonElement>(".chat-submit-btn")!;
+    const sendIcon = button.querySelector(".chat-submit-icon--send");
+    const stopIcon = button.querySelector(".chat-submit-icon--stop");
+
+    expect(button.getAttribute("aria-label")).toBe("发送");
+    expect(sendIcon).not.toBeNull();
+    expect(stopIcon).not.toBeNull();
+    expect(button.classList.contains("is-loading")).toBe(false);
+
+    controller.setChatLoading("先做原创研究");
+    expect(button.classList.contains("is-loading")).toBe(true);
+    expect(button.disabled).toBe(true);
+    expect(button.getAttribute("aria-label")).toBe("生成中");
+
+    controller.setChatResult({
+      score: 6,
+      stage: "梁圣",
+      answer: "先看真正的瓶颈。",
+      calibrationSummary: "偏向主线。",
+      dimensions: { originality: 0.4, openness: 0.2, efficiency: 0.2, intelligence: 0.6, restraint: 0.2 },
+      disclaimer: "simulation",
+      conversation: { id: "00000000-0000-4000-8000-000000000001", title: "测试" },
+    });
+    expect(button.classList.contains("is-loading")).toBe(false);
+    expect(button.disabled).toBe(false);
+    expect(button.getAttribute("aria-label")).toBe("发送");
+
+    controller.setChatLoading("再来一次");
+    controller.setChatError("失败了");
+    expect(button.classList.contains("is-loading")).toBe(false);
+    expect(button.getAttribute("aria-label")).toBe("发送");
+  });
 });

@@ -1138,9 +1138,32 @@ h1 {
 
 .chat-submit-btn {
   justify-self: end;
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  padding: 0;
   border-color: var(--accent);
   color: white;
   background: var(--accent);
+}
+
+.chat-submit-icon {
+  display: block;
+  width: 15px;
+  height: 15px;
+}
+
+.chat-submit-btn .chat-submit-icon--stop {
+  display: none;
+}
+
+.chat-submit-btn.is-loading .chat-submit-icon--send {
+  display: none;
+}
+
+.chat-submit-btn.is-loading .chat-submit-icon--stop {
+  display: block;
 }
 
 .chat-answer {
