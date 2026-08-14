@@ -5,14 +5,22 @@ export default defineConfig({
   fullyParallel: true,
   reporter: "list",
   use: {
-    baseURL: "http://127.0.0.1:5173",
+    baseURL: "http://127.0.0.1:5173/liang-intensity-calibrator/",
     trace: "retain-on-failure",
   },
-  webServer: {
-    command: "npm run dev -- --host 127.0.0.1",
-    url: "http://127.0.0.1:5173",
-    reuseExistingServer: true,
-  },
+  webServer: [
+    {
+      command:
+        "VITE_API_BASE_URL=http://127.0.0.1:8787 npm run build:pages && npm run preview:pages",
+      url: "http://127.0.0.1:5173/liang-intensity-calibrator/",
+      reuseExistingServer: false,
+    },
+    {
+      command: "npm run test:api",
+      url: "http://127.0.0.1:8787/__test/health",
+      reuseExistingServer: false,
+    },
+  ],
   projects: [
     {
       name: "desktop-chromium",

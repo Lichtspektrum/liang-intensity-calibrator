@@ -25,7 +25,12 @@ jobs:
           cache: npm
       - uses: actions/configure-pages@v5
       - run: npm ci
-      - run: npm run build:pages
+      - name: Validate API origin and build Pages
+        run: |
+          node scripts/validate-api-base-url.mjs
+          npm run build:pages
+        env:
+          VITE_API_BASE_URL: ${{ vars.VITE_API_BASE_URL }}
       - uses: actions/upload-pages-artifact@v3
         with:
           path: dist-pages

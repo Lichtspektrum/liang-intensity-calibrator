@@ -5,14 +5,19 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc --noEmit && vite build && node scripts/prepare-sites-build.mjs",
-    "build:pages": "tsc --noEmit && vite build --config vite.pages.config.ts --mode github-pages",
+    "dev:worker": "wrangler dev --config wrangler.json",
+    "build": "npm run build:worker",
+    "build:worker": "tsc --noEmit && wrangler deploy --dry-run --config wrangler.json --outdir dist-worker",
+    "build:pages": "tsc --noEmit && vite build --config vite.pages.config.ts --mode github-pages && node scripts/copy-pages-media.mjs",
+    "media:posters": "bash scripts/media/build-posters.sh",
     "preview": "vite preview",
+    "preview:pages": "vite preview --config vite.pages.config.ts --host 127.0.0.1 --port 5173",
+    "test:api": "node tests/api-server.mjs",
     "test": "vitest",
     "test:e2e": "playwright test"
   },
   "devDependencies": {
-    "@cloudflare/vite-plugin": "^1.51.1",
+    "@cloudflare/workers-types": "^5.20260813.1",
     "@playwright/test": "^1.62.1",
     "@types/node": "^26.2.0",
     "jsdom": "^26.1.0",
@@ -20,5 +25,9 @@
     "vite": "^8.2.1",
     "vitest": "^4.1.10",
     "wrangler": "^4.120.0"
+  },
+  "dependencies": {
+    "@fingerprintjs/fingerprintjs": "^5.2.0",
+    "number-flow": "^0.6.2"
   }
 }
