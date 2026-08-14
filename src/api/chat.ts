@@ -268,7 +268,8 @@ export async function handlePostChat(request: Request, env: Env): Promise<Respon
       disclaimer: "梁文锋角色化回答；基于公开材料提炼，不代表梁文锋本人或 DeepSeek。",
       conversation: { id: conversation.id, title: conversation.title },
     }, { headers: { "Cache-Control": "no-store" } });
-  } catch {
+  } catch (error) {
+    console.error("chat generation failed:", error);
     return jsonResponse({ error: "AI chat is temporarily unavailable" }, { status: 503 });
   }
 }
