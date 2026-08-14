@@ -334,6 +334,7 @@ describe("liang slider app", () => {
       calibrationSummary: "<script>bad()</script>",
       dimensions: { originality: 0, openness: 0, efficiency: 0, intelligence: 0, restraint: 0 },
       disclaimer: "simulation",
+      conversation: { id: "00000000-0000-4000-8000-000000000001", title: "测试" },
     });
     expect(root.querySelector(".news-headline")?.textContent).toBe("<img src=x>");
     expect(root.querySelector(".chat-answer")?.textContent).toContain("<img");
@@ -368,7 +369,7 @@ describe("liang slider app", () => {
     expect(root.querySelector(".news-progress-events")?.textContent).toContain("中英双路检索");
   });
 
-  it("把时间线标题和日期当作纯文本与属性处理", () => {
+  it("把事件标题和日期当作纯文本与属性处理", () => {
     const controller = mountApp(root);
     const maliciousDate = '2026-08-13\"><script>window.pwned=1</script>';
     const maliciousTitle = '梁圣\"><img src=x onerror=alert(1)>';
@@ -391,5 +392,84 @@ describe("liang slider app", () => {
     expect(button.textContent).toContain(maliciousDate.slice(5));
     button.click();
     expect(selected).toEqual([maliciousDate]);
+  });
+
+  it("侧边栏渲染历史对话，支持打开与删除且高亮当前项", () => {
+    const controller = mountApp(root);
+    const selected: string[] = [];
+    const deleted: string[] = [];
+    controller.onConversationSelect = (id) => selected.push(id);
+    controller.onConversationDelete = (id) => deleted.push(id);
+
+    controller.setChatConversations([
+      {
+        id: "00000000-0000-4000-8000-000000000001",
+        title: "先做原创研究",
+        messageCount: 3,
+        lastScore: 6,
+        lastStage: "梁圣",
+        createdAt: 1,
+        updatedAt: 2,
+      },
+      {
+        id: "00000000-0000-4000-8000-000000000002",
+        title: "要不要追热点",
+        messageCount: 1,
+        lastScore: -9,
+        lastStage: "牢梁",
+        createdAt: 1,
+        updatedAt: 3,
+      },
+    ]);
+    controller.setActiveConversationId("00000000-0000-4000-8000-000000000001");
+
+    const items = Array.from(root.querySelectorAll<HTMLElement>(".chat-conversation"));
+    expect(items).toHaveLength(2);
+    expect(items[0]?.classList.contains("is-active")).toBe(true);
+    expect(items[1]?.classList.contains("is-active")).toBe(false);
+    expect(items[0]?.querySelector(".chat-conversation-meta")?.textContent).toContain("3 条");
+    expect(items[0]?.querySelector(".chat-conversation-meta")?.textContent).toContain("梁圣 +6");
+
+    items[0]?.querySelector<HTMLButtonElement>(".chat-conversation-open")?.click();
+    items[1]?.querySelector<HTMLButtonElement>(".chat-conversation-delete")?.click();
+    expect(selected).toEqual(["00000000-0000-4000-8000-000000000001"]);
+    expect(deleted).toEqual(["00000000-0000-4000-8000-000000000002"]);
+    expect(root.querySelector(".chat-sidebar-empty")?.hasAttribute("hidden")).toBe(true);
+  });
+
+  it("载入历史对话时按消息渲染，并为每次回答回显分值", () => {
+    const controller = mountApp(root);
+
+    controller.setChatThread([
+      { role: "user", content: "先做原创研究", score: null, stage: null, createdAt: 1 },
+      { role: "assistant", content: "我们可以先看真正的瓶颈。", score: 6, stage: "梁圣", createdAt: 2 },
+      { role: "user", content: "下一步呢？", score: null, stage: null, createdAt: 3 },
+      { role: "assistant", content: "把技术瓶颈量化。", score: -3, stage: "梁子", createdAt: 4 },
+    ]);
+
+    expect(root.querySelectorAll(".chat-turn--user")).toHaveLength(2);
+    expect(root.querySelectorAll(".chat-turn--assistant")).toHaveLength(2);
+    const badges = Array.from(root.querySelectorAll<HTMLElement>(".chat-turn-score"));
+    expect(badges).toHaveLength(2);
+    expect(badges[0]?.textContent).toBe("梁圣 · +6");
+    expect(badges[1]?.textContent).toBe("梁子 · -3");
+    expect(root.querySelector(".chat-empty")).toBeNull();
+  });
+
+  it("新对话按钮清空线程并触发回调", () => {
+    const controller = mountApp(root);
+    const started: number[] = [];
+    controller.onNewConversation = () => started.push(1);
+
+    controller.setChatThread([
+      { role: "user", content: "旧问题", score: null, stage: null, createdAt: 1 },
+      { role: "assistant", content: "旧回答", score: 2, stage: "梁圣", createdAt: 2 },
+    ]);
+    controller.clearChatThread();
+
+    expect(root.querySelectorAll(".chat-turn")).toHaveLength(0);
+    expect(root.querySelector(".chat-empty")?.textContent).toContain("新对话");
+    root.querySelector<HTMLButtonElement>(".chat-new-btn")?.click();
+    expect(started).toEqual([1]);
   });
 });

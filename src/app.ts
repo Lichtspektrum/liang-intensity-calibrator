@@ -3,6 +3,8 @@ import { marked } from "marked";
 
 import type {
   ChatData,
+  ConversationMessageData,
+  ConversationSummaryData,
   NewsCalibrationData,
   NewsItemData,
   NewsJobData,
@@ -38,6 +40,7 @@ export interface AppController {
   setUserVotePosition(position: number | null): void;
   setTimelineEvents(events: TimelineEventData[]): void;
   setAppMode(mode: AppMode): void;
+  setModePosition(mode: AppMode, score: number | null): void;
   setNewsLoading(): void;
   setNewsProgress(progress: NewsJobData): void;
   setNewsResult(result: NewsCalibrationData): void;
@@ -45,14 +48,23 @@ export interface AppController {
   setChatLoading(message: string): void;
   setChatResult(result: ChatData): void;
   setChatError(message: string): void;
+  setChatNotice(message: string): void;
+  setChatConversations(conversations: ConversationSummaryData[]): void;
+  setActiveConversationId(id: string | null): void;
+  setChatThread(messages: ConversationMessageData[]): void;
+  clearChatThread(): void;
   enterHistoryMode(date: string, score: number): void;
   exitHistoryMode(): void;
   onVote?: (position: number) => void;
   onHistorySelect?: (date: string) => void;
   onHistoryExit?: () => void;
   onModeChange?: (mode: AppMode) => void;
+  onModePositionChange?: (mode: AppMode, score: number) => void;
   onNewsRefresh?: () => void;
   onChatSubmit?: (message: string) => void;
+  onConversationSelect?: (id: string) => void;
+  onConversationDelete?: (id: string) => void;
+  onNewConversation?: () => void;
 }
 
 export type AppMode = "manual" | "news" | "chat";
@@ -80,8 +92,8 @@ function createStageMarkers(): string {
 
 function createTimelinePanel(): string {
   return `
-    <aside class="timeline-panel" aria-label="梁系强度时间线">
-      <div class="timeline-header">时间线</div>
+    <aside class="timeline-panel" aria-label="梁系强度">
+      <div class="timeline-header"></div>
       <div class="timeline-track"></div>
       <button class="timeline-return-btn" hidden>回到实时</button>
     </aside>
@@ -131,9 +143,16 @@ export function mountApp(
             <p class="eyebrow">LIANG INTENSITY CALIBRATOR</p>
             <h1>滑动变祖器</h1>
           </div>
-          <div class="level-meter" aria-live="polite">
-            <span>梁系强度</span>
-            <output class="level-output" for="strength-slider">--</output>
+          <div class="masthead-side">
+            <nav class="mode-switch" aria-label="校准模式">
+              <button class="mode-btn is-active" type="button" data-mode="manual">手动</button>
+              <button class="mode-btn" type="button" data-mode="news">今日 AI 新闻</button>
+              <button class="mode-btn" type="button" data-mode="chat">梁式对话</button>
+            </nav>
+            <div class="level-meter" aria-live="polite">
+              <span>梁系强度</span>
+              <output class="level-output" for="strength-slider">--</output>
+            </div>
           </div>
         </header>
 
@@ -158,11 +177,6 @@ export function mountApp(
         </section>
 
         <section class="control-panel" aria-label="梁系强度控制">
-          <nav class="mode-switch" aria-label="校准模式">
-            <button class="mode-btn is-active" type="button" data-mode="manual">手动</button>
-            <button class="mode-btn" type="button" data-mode="news">今日 AI 新闻</button>
-            <button class="mode-btn" type="button" data-mode="chat">梁式对话</button>
-          </nav>
           <div class="slider-layout" aria-label="梁系强度变阻器">
             <div class="range-control">
               <p class="calibration-status" role="status" aria-live="polite">拖动滑片即可连续校准，当前位置会保存在本机</p>
@@ -214,7 +228,7 @@ export function mountApp(
               </div>
               <p class="news-progress-detail">准备可信源、日期边界与梁文锋分析 skill</p>
               <div class="news-progress-metrics" aria-label="采集统计">
-                <span><b class="metric-sources">0/7</b> 可信源</span>
+                <span><b class="metric-sources">0/3</b> 可信源</span>
                 <span><b class="metric-direct">0</b> 直连</span>
                 <span><b class="metric-web">0</b> 搜索</span>
                 <span><b class="metric-unique">0</b> 有效</span>
@@ -246,16 +260,24 @@ export function mountApp(
                 <h2>输入一个问题或判断</h2>
               </div>
             </div>
-            <div class="chat-thread" role="log" aria-label="连续梁式对话" aria-live="polite">
-              <p class="chat-empty">对话会在本页持续保留，后续问题将结合上文回答。</p>
+            <div class="chat-body">
+              <aside class="chat-sidebar" aria-label="历史对话">
+                <button class="chat-new-btn" type="button">新对话</button>
+                <ol class="chat-conversations" aria-label="历史对话列表"></ol>
+                <p class="chat-sidebar-empty" hidden>还没有历史对话</p>
+              </aside>
+              <div class="chat-main">
+                <div class="chat-thread" role="log" aria-label="连续梁式对话" aria-live="polite">
+                  <p class="chat-empty">历史对话会保留在左侧列表，每次回答都会记录当时的强度分值。</p>
+                </div>
+                <p class="chat-status" role="status" aria-live="polite"></p>
+                <form class="chat-form">
+                  <textarea id="chat-input" maxlength="2000" rows="3" placeholder="例如：我们应该先追求用户规模，还是继续投入底层模型？" required></textarea>
+                  <p class="chat-privacy">由本项目 npm 安装的 OpenCode CLI 免费模型处理，无需模型 key。免费期内输入可能被用于改进模型，请勿提交隐私或机密信息。</p>
+                  <button class="chat-submit-btn" type="submit">校准并回答</button>
+                </form>
+              </div>
             </div>
-            <p class="chat-status" role="status" aria-live="polite"></p>
-            <form class="chat-form">
-              <label for="chat-input">同时校准这段话，并用公开材料提炼的梁式框架回答</label>
-              <textarea id="chat-input" maxlength="2000" rows="3" placeholder="例如：我们应该先追求用户规模，还是继续投入底层模型？" required></textarea>
-              <p class="chat-privacy">由本项目 npm 安装的 OpenCode CLI 免费模型处理，无需模型 key。免费期内输入可能被用于改进模型，请勿提交隐私或机密信息。</p>
-              <button class="chat-submit-btn" type="submit">校准并回答</button>
-            </form>
           </section>
         </section>
 
@@ -315,11 +337,16 @@ export function mountApp(
   const chatSubmitButton = root.querySelector<HTMLButtonElement>(".chat-submit-btn")!;
   const chatStatus = root.querySelector<HTMLElement>(".chat-status")!;
   const chatThread = root.querySelector<HTMLElement>(".chat-thread")!;
+  const chatNewButton = root.querySelector<HTMLButtonElement>(".chat-new-btn")!;
+  const chatConversations = root.querySelector<HTMLOListElement>(".chat-conversations")!;
+  const chatSidebarEmpty = root.querySelector<HTMLElement>(".chat-sidebar-empty")!;
 
   let previewPosition = 0;
   let displayPosition = 0;
   let currentMode: "idle" | "previewing-vote" | "viewing-history" = "idle";
   let appMode: AppMode = "manual";
+  let activeConversationId: string | null = null;
+  const modePositions: Partial<Record<AppMode, number>> = {};
   let mediaReady = false;
   let communityLevel = 0;
   let userVotePosition: number | null = null;
@@ -430,6 +457,74 @@ export function mountApp(
     controller?.onChatSubmit?.(message);
   });
 
+  chatNewButton.addEventListener("click", () => {
+    const controller = (root as HTMLElement & { _controller?: AppController })._controller;
+    controller?.onNewConversation?.();
+  });
+
+  const appendAssistantTurn = (
+    container: HTMLElement,
+    content: string,
+    score: number | null,
+    stage: string | null,
+  ): void => {
+    const assistantTurn = document.createElement("article");
+    assistantTurn.className = "chat-turn chat-turn--assistant";
+    const answer = document.createElement("p");
+    answer.className = "chat-answer";
+    answer.textContent = content;
+    assistantTurn.append(answer);
+    if (score !== null) {
+      const badge = document.createElement("span");
+      badge.className = "chat-turn-score";
+      badge.textContent = `${stage ?? describeScore(score).stage} · ${formatStatusScore(score)}`;
+      assistantTurn.append(badge);
+    }
+    container.append(assistantTurn);
+  };
+
+  const renderConversationList = (conversations: ConversationSummaryData[]): void => {
+    chatSidebarEmpty.hidden = conversations.length > 0;
+    const nodes = conversations.map((conversation) => {
+      const item = document.createElement("li");
+      item.className = "chat-conversation";
+      item.dataset.id = conversation.id;
+      if (conversation.id === activeConversationId) item.classList.add("is-active");
+
+      const open = document.createElement("button");
+      open.className = "chat-conversation-open";
+      open.type = "button";
+      open.setAttribute("aria-label", `打开对话：${conversation.title}`);
+      const title = document.createElement("strong");
+      title.textContent = conversation.title;
+      const meta = document.createElement("span");
+      meta.className = "chat-conversation-meta";
+      const metaParts = [`${conversation.messageCount} 条`];
+      if (conversation.lastScore !== null) {
+        metaParts.push(`${conversation.lastStage ?? describeScore(conversation.lastScore).stage} ${formatStatusScore(conversation.lastScore)}`);
+      }
+      meta.textContent = metaParts.join(" · ");
+      open.append(title, meta);
+      open.addEventListener("click", () => {
+        controller.onConversationSelect?.(conversation.id);
+      });
+
+      const remove = document.createElement("button");
+      remove.className = "chat-conversation-delete";
+      remove.type = "button";
+      remove.setAttribute("aria-label", `删除对话：${conversation.title}`);
+      remove.textContent = "×";
+      remove.addEventListener("click", (event) => {
+        event.stopPropagation();
+        controller.onConversationDelete?.(conversation.id);
+      });
+
+      item.append(open, remove);
+      return item;
+    });
+    chatConversations.replaceChildren(...nodes);
+  };
+
   setScore(0);
 
   const controller: AppController = {
@@ -516,8 +611,20 @@ export function mountApp(
       slider.disabled = !mediaReady || mode !== "manual" || currentMode === "viewing-history";
       if (mode === "manual" && currentMode !== "viewing-history") {
         setScore(userVotePosition ?? communityLevel);
+      } else if ((mode === "news" || mode === "chat") && currentMode !== "viewing-history") {
+        const saved = modePositions[mode];
+        if (saved !== undefined) setScore(saved);
       }
       renderVoteStatus();
+    },
+    setModePosition(mode, score) {
+      if (score === null || !Number.isFinite(score)) {
+        delete modePositions[mode];
+      } else {
+        modePositions[mode] = clampScore(score);
+      }
+      const value = modePositions[mode];
+      if (value !== undefined) controller.onModePositionChange?.(mode, value);
     },
     setNewsLoading() {
       newsRefreshButton.disabled = true;
@@ -535,7 +642,7 @@ export function mountApp(
       newsProgressDetail.textContent = job.detail;
       newsProgressTrack.setAttribute("aria-valuenow", String(Math.round(job.progress)));
       newsProgressFill.style.width = `${job.progress}%`;
-      metricSources.textContent = `${job.stats.sourcesCompleted ?? 0}/${job.stats.sourcesTotal ?? 7}`;
+      metricSources.textContent = `${job.stats.sourcesCompleted ?? 0}/${job.stats.sourcesTotal ?? 3}`;
       metricDirect.textContent = String(job.stats.directItems ?? 0);
       metricWeb.textContent = String(job.stats.webItems ?? 0);
       metricUnique.textContent = String(job.stats.uniqueItems ?? 0);
@@ -568,14 +675,8 @@ export function mountApp(
       newsHeadline.textContent = result.headline;
       newsRationale.textContent = result.rationale;
       newsQuote.replaceChildren();
-      const quoteLink = document.createElement("a");
-      quoteLink.href = result.quoteSource;
-      quoteLink.target = "_blank";
-      quoteLink.rel = "noreferrer";
-      quoteLink.textContent = `“${result.quote.text}”`;
-      const timestamp = document.createElement("small");
-      timestamp.textContent = ` 网传转写 ${result.quote.timestamp}`;
-      newsQuote.append(quoteLink, timestamp);
+      const quoteText = document.createTextNode(`“${result.quote.text}”`);
+      newsQuote.append(quoteText);
       newsCaveat.replaceChildren(document.createTextNode(`${result.sourceCaveat} `));
       const transcriptLink = document.createElement("a");
       transcriptLink.href = result.transcriptSource;
@@ -597,7 +698,7 @@ export function mountApp(
       chatInput.disabled = true;
       chatInput.value = "";
       chatStatus.dataset.state = "loading";
-      chatStatus.textContent = "正在校准并组织回答…";
+      chatStatus.hidden = true;
       chatThread.querySelector(".chat-empty")?.remove();
       const userTurn = document.createElement("article");
       userTurn.className = "chat-turn chat-turn--user";
@@ -612,15 +713,10 @@ export function mountApp(
       chatSubmitButton.disabled = false;
       chatInput.disabled = false;
       chatStatus.dataset.state = "ready";
+      chatStatus.hidden = false;
       chatStatus.textContent = `${result.stage} · ${formatStatusScore(result.score)}`;
       chatThread.querySelector(".is-pending")?.remove();
-      const assistantTurn = document.createElement("article");
-      assistantTurn.className = "chat-turn chat-turn--assistant";
-      const answer = document.createElement("p");
-      answer.className = "chat-answer";
-      answer.textContent = result.answer;
-      assistantTurn.append(answer);
-      chatThread.append(assistantTurn);
+      appendAssistantTurn(chatThread, result.answer, result.score, result.stage);
       chatThread.scrollTop = chatThread.scrollHeight;
       chatInput.focus();
     },
@@ -629,7 +725,43 @@ export function mountApp(
       chatInput.disabled = false;
       chatThread.querySelector(".is-pending")?.remove();
       chatStatus.dataset.state = "error";
+      chatStatus.hidden = false;
       chatStatus.textContent = message;
+    },
+    setChatNotice(message) {
+      chatStatus.dataset.state = "ready";
+      chatStatus.hidden = false;
+      chatStatus.textContent = message;
+    },
+    setChatConversations(conversations) {
+      renderConversationList(conversations);
+    },
+    setActiveConversationId(id) {
+      activeConversationId = id;
+      chatConversations.querySelectorAll<HTMLElement>(".chat-conversation").forEach((item) => {
+        item.classList.toggle("is-active", item.dataset.id === id);
+      });
+    },
+    setChatThread(messages) {
+      chatThread.replaceChildren();
+      for (const message of messages) {
+        if (message.role === "user") {
+          const userTurn = document.createElement("article");
+          userTurn.className = "chat-turn chat-turn--user";
+          userTurn.textContent = message.content;
+          chatThread.append(userTurn);
+        } else {
+          appendAssistantTurn(chatThread, message.content, message.score, message.stage);
+        }
+      }
+      chatThread.scrollTop = chatThread.scrollHeight;
+    },
+    clearChatThread() {
+      chatThread.replaceChildren();
+      const empty = document.createElement("p");
+      empty.className = "chat-empty";
+      empty.textContent = "新对话会保留在左侧列表，每次回答都会记录当时的强度分值。";
+      chatThread.append(empty);
     },
     enterHistoryMode(date, score) {
       currentMode = "viewing-history";
@@ -644,7 +776,7 @@ export function mountApp(
       slider.disabled = !mediaReady || appMode !== "manual";
       timelineReturnBtn.hidden = true;
       experience.classList.remove("is-history-mode");
-      timelineHeader.textContent = "时间线";
+      timelineHeader.textContent = "";
       setScore(userVotePosition ?? communityLevel);
     },
   };

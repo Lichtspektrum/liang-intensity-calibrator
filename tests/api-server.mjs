@@ -124,6 +124,10 @@ createServer(async (request, response) => {
     sendJson(response, [], { cors: true });
     return;
   }
+  if (request.method === "GET" && url.pathname === "/api/conversations") {
+    sendJson(response, [], { cors: true });
+    return;
+  }
   if (request.method === "POST" && url.pathname === "/api/vote") {
     const { position } = JSON.parse(rawBody);
     sendJson(response, {
@@ -142,6 +146,14 @@ createServer(async (request, response) => {
       cors: true,
       headers: { "X-Test-Log-Id": String(entry.id) },
     });
+    return;
+  }
+  if (request.method === "GET" && url.pathname === "/api/mode-positions") {
+    sendJson(response, { news: null, chat: null }, { cors: true });
+    return;
+  }
+  if (request.method === "PUT" && url.pathname === "/api/mode-positions") {
+    sendJson(response, JSON.parse(rawBody), { cors: true });
     return;
   }
 

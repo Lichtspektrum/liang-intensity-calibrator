@@ -62,7 +62,7 @@ describe("CORS", () => {
       "https://lichtspektrum.github.io",
     );
     expect(headers.get("Vary")).toBe("Origin");
-    expect(headers.get("Access-Control-Allow-Methods")).toBe("GET, POST, OPTIONS");
+    expect(headers.get("Access-Control-Allow-Methods")).toBe("GET, POST, PUT, DELETE, OPTIONS");
     expect(headers.get("Access-Control-Allow-Headers")).toBe("Content-Type");
   });
 

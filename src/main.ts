@@ -1,7 +1,7 @@
 import "./styles.css";
 
 import { type AppController, type AppMode, mountApp } from "./app";
-import { createApiClient, type ChatTurnData, type ScoreData, type TimelineDayData } from "./api";
+import { createApiClient, type ModePositionsData, type ScoreData, type TimelineDayData } from "./api";
 import { MAX_SCORE, MIN_SCORE } from "./score-domain";
 import { easeInOutCubic, scoreTransitionDurationMs } from "./score-transition";
 import {
@@ -11,6 +11,7 @@ import {
 } from "./video-renderer";
 
 const MANUAL_STORAGE_KEY = "liang-slider:manual-position:v1";
+const CHAT_ACTIVE_STORAGE_KEY = "liang-slider:active-chat:v1";
 
 interface StoredVote {
   position: number;
@@ -64,7 +65,9 @@ let newsLoaded = false;
 let chatInFlight = false;
 let appMode: AppMode = "manual";
 let chatTransitionGeneration = 0;
-const chatHistory: ChatTurnData[] = [];
+let activeConversationId: string | null = null;
+let pendingConversationId: string | null = null;
+const modePositions: ModePositionsData = { news: null, chat: null };
 const timelineByDate = new Map<string, TimelineDayData>();
 
 const requestDraw = (score: number): void => {
@@ -93,6 +96,34 @@ controller.onVote = (position: number) => {
   saveStoredVote({ position, nextVoteAt: 0 });
   controller.setUserVotePosition(position);
   controller.restoreVote(position);
+};
+
+async function persistModePositions(): Promise<void> {
+  if (!api.configured) return;
+  try {
+    await api.saveModePositions(modePositions);
+  } catch {
+    // 本地缓存写入失败不影响核心交互。
+  }
+}
+
+async function loadModePositions(): Promise<void> {
+  if (!api.configured) return;
+  try {
+    const positions = await api.fetchModePositions();
+    modePositions.news = positions.news;
+    modePositions.chat = positions.chat;
+    controller?.setModePosition("news", positions.news);
+    controller?.setModePosition("chat", positions.chat);
+  } catch {
+    // 读取失败则从空缓存开始。
+  }
+}
+
+controller.onModePositionChange = (mode, score) => {
+  if (mode === "news") modePositions.news = score;
+  else if (mode === "chat") modePositions.chat = score;
+  void persistModePositions();
 };
 
 controller.onHistorySelect = (date: string) => {
@@ -133,6 +164,7 @@ async function loadNewsMode(force = false): Promise<void> {
     controller.setScore(result.score);
     controller.setNewsResult(result);
     newsLoaded = true;
+    controller.setModePosition("news", result.score);
   } catch {
     controller.setNewsError("今天的 AI 新闻暂时读取失败，请稍后重试");
   } finally {
@@ -156,24 +188,117 @@ controller.onChatSubmit = async (message: string) => {
     controller.setChatError("AI API 未配置，对话模式暂不可用");
     return;
   }
+  const conversationId = activeConversationId ?? pendingConversationId ?? crypto.randomUUID();
+  if (!activeConversationId) pendingConversationId = conversationId;
+  const submittedFor = conversationId;
   chatInFlight = true;
   controller.setChatLoading(message);
   try {
-    const result = await api.chat(message, chatHistory.slice(-20));
-    chatHistory.push(
-      { role: "user", content: message },
-      { role: "assistant", content: result.answer },
-    );
+    const result = await api.chat(message, undefined, conversationId);
+    pendingConversationId = null;
+    if (activeConversationId !== null && activeConversationId !== submittedFor) {
+      // 回答期间用户已切换到另一段历史对话：仍已持久化，只刷新列表。
+      void refreshConversationList();
+      return;
+    }
+    activeConversationId = conversationId;
+    localStorage.setItem(CHAT_ACTIVE_STORAGE_KEY, conversationId);
+    controller.setActiveConversationId(conversationId);
     controller.setChatResult(result);
+    void refreshConversationList();
     chatInFlight = false;
     const transitionStart = controller.score;
     const generation = ++chatTransitionGeneration;
     await animateChatScore(transitionStart, result.score, generation);
+    controller.setModePosition("chat", result.score);
   } catch {
     controller.setChatError("这次回答没有生成成功，请稍后重试");
   } finally {
     chatInFlight = false;
   }
+};
+
+async function refreshConversationList(): Promise<void> {
+  if (!controller || !api.configured) return;
+  try {
+    const conversations = await api.fetchConversations();
+    controller.setChatConversations(conversations);
+  } catch {
+    // 列表刷新失败时保留当前侧边栏视图。
+  }
+}
+
+async function loadConversation(id: string): Promise<void> {
+  if (!controller || !api.configured) return;
+  try {
+    const conversation = await api.fetchConversation(id);
+    activeConversationId = id;
+    pendingConversationId = null;
+    localStorage.setItem(CHAT_ACTIVE_STORAGE_KEY, id);
+    controller.setActiveConversationId(id);
+    controller.setChatThread(conversation.messages);
+    controller.setChatNotice(`已载入：${conversation.title}`);
+    const lastAssistant = [...conversation.messages]
+      .reverse()
+      .find((message) => message.role === "assistant" && message.score !== null);
+    if (lastAssistant?.score !== null && lastAssistant?.score !== undefined) {
+      controller.setScore(lastAssistant.score);
+      controller.setModePosition("chat", lastAssistant.score);
+    }
+  } catch {
+    controller.setChatError("历史对话读取失败，请稍后重试");
+  }
+}
+
+function startNewConversation(): void {
+  if (!controller) return;
+  activeConversationId = null;
+  pendingConversationId = null;
+  localStorage.removeItem(CHAT_ACTIVE_STORAGE_KEY);
+  controller.setActiveConversationId(null);
+  controller.clearChatThread();
+  controller.setChatNotice("新对话：输入第一个问题后会自动保存到左侧列表。");
+  controller.setModePosition("chat", null);
+  const baseline = activeVote?.position ?? lastCommunityScore ?? 0;
+  controller.setScore(baseline);
+}
+
+async function loadConversations(): Promise<void> {
+  if (!controller || !api.configured) return;
+  try {
+    const conversations = await api.fetchConversations();
+    controller.setChatConversations(conversations);
+    const saved = localStorage.getItem(CHAT_ACTIVE_STORAGE_KEY);
+    if (saved && conversations.some((conversation) => conversation.id === saved)) {
+      await loadConversation(saved);
+    }
+  } catch {
+    // 历史对话不可用时保持空侧边栏，不阻塞其他功能。
+  }
+}
+
+controller.onConversationSelect = (id: string) => {
+  void loadConversation(id);
+};
+
+controller.onConversationDelete = (id: string) => {
+  void (async () => {
+    if (!api.configured) return;
+    try {
+      await api.deleteConversation(id);
+    } catch {
+      // 删除失败不阻塞交互，刷新后仍会显示。
+    }
+    if (activeConversationId === id) {
+      startNewConversation();
+    } else {
+      void refreshConversationList();
+    }
+  })();
+};
+
+controller.onNewConversation = () => {
+  startNewConversation();
 };
 
 async function animateChatScore(
@@ -269,7 +394,7 @@ async function loadCommunity(): Promise<void> {
       isMajor: false,
     })));
   } catch {
-    // 时间线缺失不影响社区分数和滑杆。
+    // 历史快照缺失不影响社区分数和滑杆。
   }
 }
 
@@ -280,8 +405,10 @@ function bootstrap(): void {
   if (currentVote) {
     controller?.restoreVote(currentVote.position);
   }
+  void loadModePositions();
   void loadMedia();
   void loadCommunity();
+  void loadConversations();
 }
 
 bootstrap();

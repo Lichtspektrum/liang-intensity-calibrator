@@ -10,6 +10,7 @@
 - 新闻模式：采集当天 AI 新闻，再按原创、开放、效率、智能与克制五个维度校准
 - 新闻采集显示真实分阶段进度、来源计数、耗时和详细事件；完成后在校准结论旁以安全 Markdown 展示新闻
 - 对话模式：连续保留上下文，校准输入，并以梁文锋第一人称角色和公开材料提炼出的思考框架回答
+- 对话历史：每个对话保留在侧边栏，可查看、继续或删除；每次回答都会记录当时的强度分值与阶段，重新打开对话时变阻器回到最后一次回答的分值
 - 所有需要 LLM 的搜索、分析和回答均通过本地 OpenCode CLI，并固定使用 `opencode/deepseek-v4-flash-free`
 
 模型不需要 API key。新闻搜索可调用 OpenCode 的 `websearch` 与 `webfetch`，分析和对话可读取项目内提炼的梁文锋 skill。
@@ -48,7 +49,7 @@ npm run build
 
 - Vite 提供前端页面。
 - `src/server.ts` 是普通 Node HTTP API。
-- `node:sqlite` 保存每日快照、新闻缓存和聊天限流计数。
+- `node:sqlite` 保存每日快照、新闻缓存、聊天限流计数和对话历史（每个回答附带分值）。
 - `src/opencode-runner.ts` 按需调用项目本地安装的 OpenCode CLI。
 - `server/opencode-runtime/` 只允许梁文锋 skill、`websearch` 与 `webfetch`；文件编辑、shell 和其他工具均被禁用。
 
@@ -65,4 +66,3 @@ npm run build
 - AI 新闻采集结构参考 [wanshi-tong](https://github.com/Pawnnwap/wanshi-tong)
 - 人物框架提炼方法参考 [nuwa-skill](https://github.com/alchaincyf/nuwa-skill)
 - 主要公开材料使用 [36氪·暗涌 2024 年专访](https://www.36kr.com/p/2872793466982535)
-- 会议短句采用目前找到的[较早原始文章](https://mp.weixin.qq.com/s/AWsSjcT9NYbj1W8SWXgb_w)，并同时链接[带时间戳的整理归档](https://github.com/iamsophie/deepseek-liang-wenfeng-investor-meeting)。两者均未获梁文锋或 DeepSeek 官方确认

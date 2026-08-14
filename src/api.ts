@@ -92,11 +92,46 @@ export interface ChatData {
   calibrationSummary: string;
   dimensions: CalibrationDimensions;
   disclaimer: string;
+  conversation: {
+    id: string;
+    title: string;
+  };
 }
 
 export interface ChatTurnData {
   role: "user" | "assistant";
   content: string;
+}
+
+export interface ConversationSummaryData {
+  id: string;
+  title: string;
+  messageCount: number;
+  lastScore: number | null;
+  lastStage: string | null;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface ConversationMessageData {
+  role: "user" | "assistant";
+  content: string;
+  score: number | null;
+  stage: string | null;
+  createdAt: number;
+}
+
+export interface ConversationData {
+  id: string;
+  title: string;
+  createdAt: number;
+  updatedAt: number;
+  messages: ConversationMessageData[];
+}
+
+export interface ModePositionsData {
+  news: number | null;
+  chat: number | null;
 }
 
 interface VoteCommunityData extends ScoreData {
@@ -136,7 +171,16 @@ export interface ApiClient {
   fetchNews(): Promise<NewsCalibrationData>;
   startNewsCollection(force?: boolean): Promise<NewsJobData>;
   fetchNewsProgress(jobId: string): Promise<NewsJobData>;
-  chat(message: string, history?: readonly ChatTurnData[]): Promise<ChatData>;
+  chat(
+    message: string,
+    history?: readonly ChatTurnData[],
+    conversationId?: string,
+  ): Promise<ChatData>;
+  fetchConversations(): Promise<ConversationSummaryData[]>;
+  fetchConversation(id: string): Promise<ConversationData>;
+  deleteConversation(id: string): Promise<void>;
+  fetchModePositions(): Promise<ModePositionsData>;
+  saveModePositions(positions: ModePositionsData): Promise<void>;
 }
 
 export class CommunityUnavailableError extends Error {
@@ -256,6 +300,17 @@ function isDimensions(value: unknown): value is CalibrationDimensions {
   );
 }
 
+function isModePosition(value: unknown): value is number | null {
+  return value === null
+    || (typeof value === "number" && Number.isFinite(value) && value >= MIN_SCORE && value <= MAX_SCORE);
+}
+
+function isModePositionsData(value: unknown): value is ModePositionsData {
+  return isRecord(value)
+    && isModePosition(value.news)
+    && isModePosition(value.chat);
+}
+
 function isNewsCalibration(value: unknown): value is NewsCalibrationData {
   return isRecord(value)
     && isCalendarDate(value.date)
@@ -305,13 +360,75 @@ function isNewsJob(value: unknown): value is NewsJobData {
     && (value.result === undefined || isNewsCalibration(value.result));
 }
 
+const CONVERSATION_ID_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/iu;
+
+function isConversationId(value: unknown): value is string {
+  return typeof value === "string" && CONVERSATION_ID_PATTERN.test(value);
+}
+
+function isScoreOrNull(value: unknown): value is number | null {
+  return value === null
+    || (typeof value === "number" && Number.isFinite(value) && value >= MIN_SCORE && value <= MAX_SCORE);
+}
+
+function isConversationSummaryData(value: unknown): value is ConversationSummaryData {
+  if (
+    !isRecord(value)
+    || !isConversationId(value.id)
+    || typeof value.title !== "string"
+    || !isNonNegativeSafeInteger(value.messageCount)
+    || !isScoreOrNull(value.lastScore)
+    || !isNonNegativeSafeInteger(value.createdAt)
+    || !isNonNegativeSafeInteger(value.updatedAt)
+  ) {
+    return false;
+  }
+  const lastScore = value.lastScore;
+  if (lastScore === null) return value.lastStage === null;
+  return typeof value.lastStage === "string"
+    && STAGES.includes(value.lastStage as (typeof STAGES)[number])
+    && describeScore(lastScore).stage === value.lastStage;
+}
+
+function isConversationMessageData(value: unknown): value is ConversationMessageData {
+  if (
+    !isRecord(value)
+    || (value.role !== "user" && value.role !== "assistant")
+    || typeof value.content !== "string"
+    || !isNonNegativeSafeInteger(value.createdAt)
+  ) {
+    return false;
+  }
+  if (value.role === "user") {
+    return value.score === null && value.stage === null;
+  }
+  if (!isScoreOrNull(value.score) || value.score === null) return false;
+  if (value.stage === null) return false;
+  return STAGES.includes(value.stage as (typeof STAGES)[number])
+    && describeScore(value.score).stage === value.stage;
+}
+
+function isConversationData(value: unknown): value is ConversationData {
+  return isRecord(value)
+    && isConversationId(value.id)
+    && typeof value.title === "string"
+    && isNonNegativeSafeInteger(value.createdAt)
+    && isNonNegativeSafeInteger(value.updatedAt)
+    && Array.isArray(value.messages)
+    && value.messages.every(isConversationMessageData);
+}
+
 function isChatData(value: unknown): value is ChatData {
   return isRecord(value)
     && isValidScoreAndStage(value)
     && typeof value.answer === "string"
     && typeof value.calibrationSummary === "string"
     && typeof value.disclaimer === "string"
-    && isDimensions(value.dimensions);
+    && isDimensions(value.dimensions)
+    && isRecord(value.conversation)
+    && isConversationId(value.conversation.id)
+    && typeof value.conversation.title === "string";
 }
 
 function isVotePosition(value: unknown): value is number {
@@ -384,6 +501,11 @@ export function createApiClient(baseUrl: string | undefined): ApiClient {
       startNewsCollection: unavailable,
       fetchNewsProgress: unavailable,
       chat: unavailable,
+      fetchConversations: unavailable,
+      fetchConversation: unavailable,
+      deleteConversation: unavailable,
+      fetchModePositions: unavailable,
+      saveModePositions: unavailable,
     };
   }
 
@@ -454,14 +576,55 @@ export function createApiClient(baseUrl: string | undefined): ApiClient {
       if (!isNewsJob(result)) throw new Error("Invalid news job response");
       return result;
     },
-    async chat(message, history = []) {
+    async chat(message, history = [], conversationId) {
+      const payload: Record<string, unknown> = { message };
+      if (conversationId !== undefined) {
+        if (!isConversationId(conversationId)) throw new Error("Invalid conversation id");
+        payload.conversationId = conversationId;
+      } else if (history.length > 0) {
+        payload.history = history;
+      }
       const result = await fetchJson<unknown>("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message, history }),
+        body: JSON.stringify(payload),
       });
       if (!isChatData(result)) throw new Error("Invalid chat response");
       return result;
+    },
+    async fetchConversations() {
+      const result = await fetchJson<unknown>("/api/conversations");
+      if (!Array.isArray(result) || !result.every(isConversationSummaryData)) {
+        throw new Error("Invalid conversations response");
+      }
+      return result;
+    },
+    async fetchConversation(id) {
+      if (!isConversationId(id)) throw new Error("Invalid conversation id");
+      const result = await fetchJson<unknown>(`/api/conversations/${id}`);
+      if (!isConversationData(result)) throw new Error("Invalid conversation response");
+      return result;
+    },
+    async deleteConversation(id) {
+      if (!isConversationId(id)) throw new Error("Invalid conversation id");
+      const response = await fetch(`${base}/api/conversations/${id}`, { method: "DELETE" });
+      // 重复删除视为成功，便于客户端直接刷新列表。
+      if (!response.ok && response.status !== 404) {
+        throw new Error(`API error: ${response.status}`);
+      }
+    },
+    async fetchModePositions() {
+      const result = await fetchJson<unknown>("/api/mode-positions");
+      if (!isModePositionsData(result)) throw new Error("Invalid mode positions response");
+      return result;
+    },
+    async saveModePositions(positions) {
+      const response = await fetch(`${base}/api/mode-positions`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(positions),
+      });
+      if (!response.ok) throw new Error(`API error: ${response.status}`);
     },
   };
 }

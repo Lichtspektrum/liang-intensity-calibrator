@@ -1,4 +1,7 @@
+import { mkdtempSync, rmSync } from "node:fs";
 import { readFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 
 import { handleApiRequest } from "./app";
@@ -68,5 +71,78 @@ describe("local API application", () => {
     );
     expect(packageJson.scripts["dev:api"]).toBe("tsx src/server.ts");
     expect(packageJson.scripts.build).toBe("tsc --noEmit && vite build");
+  });
+
+  it("persists and restores per-mode positions in a tmp file", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "liang-mode-positions-"));
+    try {
+      const env = createEnv({ MODE_POSITION_FILE: join(dir, "positions.json") });
+
+      const initial = await handleApiRequest(apiRequest("/api/mode-positions"), env);
+      expect(initial.status).toBe(200);
+      await expect(initial.json()).resolves.toEqual({ news: null, chat: null });
+
+      const put = await handleApiRequest(
+        apiRequest("/api/mode-positions", {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ news: 9, chat: -4 }),
+        }),
+        env,
+      );
+      expect(put.status).toBe(200);
+      await expect(put.json()).resolves.toEqual({ news: 9, chat: -4 });
+
+      const restored = await handleApiRequest(apiRequest("/api/mode-positions"), env);
+      await expect(restored.json()).resolves.toEqual({ news: 9, chat: -4 });
+
+      const partial = await handleApiRequest(
+        apiRequest("/api/mode-positions", {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ chat: null }),
+        }),
+        env,
+      );
+      await expect(partial.json()).resolves.toEqual({ news: 9, chat: null });
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("rejects out-of-range mode positions", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "liang-mode-positions-"));
+    try {
+      const env = createEnv({ MODE_POSITION_FILE: join(dir, "positions.json") });
+      const response = await handleApiRequest(
+        apiRequest("/api/mode-positions", {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ news: 99 }),
+        }),
+        env,
+      );
+      expect(response.status).toBe(400);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("routes conversation listing and deletion with CORS", async () => {
+    const env = createEnv();
+
+    const list = await handleApiRequest(apiRequest("/api/conversations"), env);
+    expect(list.status).toBe(200);
+    await expect(list.json()).resolves.toEqual([]);
+    expect(list.headers.get("Access-Control-Allow-Origin")).toBe(ALLOWED_ORIGIN);
+
+    const deleted = await handleApiRequest(
+      apiRequest("/api/conversations/00000000-0000-4000-8000-000000000001", {
+        method: "DELETE",
+      }),
+      env,
+    );
+    expect(deleted.status).toBe(204);
+    expect(deleted.headers.get("Access-Control-Allow-Origin")).toBe(ALLOWED_ORIGIN);
   });
 });

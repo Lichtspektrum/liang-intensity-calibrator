@@ -28,12 +28,20 @@ const mocks = vi.hoisted(() => {
     setChatLoading: vi.fn(),
     setChatResult: vi.fn(),
     setChatError: vi.fn(),
+    setChatNotice: vi.fn(),
+    setChatConversations: vi.fn(),
+    setActiveConversationId: vi.fn(),
+    setChatThread: vi.fn(),
+    clearChatThread: vi.fn(),
     onVote: undefined as ((position: number) => void) | undefined,
     onHistorySelect: undefined as ((date: string) => void) | undefined,
     onHistoryExit: undefined as (() => void) | undefined,
     onModeChange: undefined as ((mode: "manual" | "news" | "chat") => void) | undefined,
     onNewsRefresh: undefined as (() => void) | undefined,
     onChatSubmit: undefined as ((message: string) => void) | undefined,
+    onConversationSelect: undefined as ((id: string) => void) | undefined,
+    onConversationDelete: undefined as ((id: string) => void) | undefined,
+    onNewConversation: undefined as (() => void) | undefined,
   };
   return {
     controller,
@@ -73,6 +81,9 @@ vi.mock("./api", async (importOriginal) => {
       startNewsCollection: vi.fn(),
       fetchNewsProgress: vi.fn(),
       chat: vi.fn(),
+      fetchConversations: vi.fn(async () => []),
+      fetchConversation: vi.fn(),
+      deleteConversation: vi.fn(),
     })),
   };
 });

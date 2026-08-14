@@ -5,6 +5,7 @@ export interface Env {
   AI_RUNNER?: StructuredAiRunner;
   VOTER_HASH_SECRET: string;
   ALLOWED_ORIGINS: string;
+  MODE_POSITION_FILE?: string;
 }
 
 // Kept as a compatibility export for older clients and tests. Voting is unrestricted.
@@ -45,7 +46,7 @@ export function allowedOrigin(origin: string, env: Env): boolean {
 export function corsHeaders(origin: string, env: Env): HeadersInit {
   const headers: Record<string, string> = {
     Vary: "Origin",
-    "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+    "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
     "Access-Control-Allow-Headers": "Content-Type",
   };
 

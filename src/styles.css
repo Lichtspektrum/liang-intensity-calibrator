@@ -1,3 +1,55 @@
+/*
+ * 阶段背景大字字体（子集 WOFF2，见 src/assets/fonts/README.md）。
+ * 每个字体只含对应阶段词的字形，按 data-stage 切换，回退栈保持原系统宋体。
+ */
+@font-face {
+  font-family: "LiangStage-00";
+  src: url("./assets/fonts/stage-00.woff2") format("woff2");
+  font-weight: 900;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "LiangStage-01";
+  src: url("./assets/fonts/stage-01.woff2") format("woff2");
+  font-weight: 900;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "LiangStage-02";
+  src: url("./assets/fonts/stage-02.woff2") format("woff2");
+  font-weight: 900;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "LiangStage-03";
+  src: url("./assets/fonts/stage-03.woff2") format("woff2");
+  font-weight: 900;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "LiangStage-04";
+  src: url("./assets/fonts/stage-04.woff2") format("woff2");
+  font-weight: 900;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "LiangStage-05";
+  src: url("./assets/fonts/stage-05.woff2") format("woff2");
+  font-weight: 900;
+  font-style: normal;
+  font-display: swap;
+}
+
 :root {
   color: #171816;
   background: #e8e9e5;
@@ -58,6 +110,7 @@ label {
   --accent: #b52b24;
   --gold: #c19a49;
   --thumb-bg: #e8e9e5;
+  --stage-color: var(--ink);
   position: relative;
   isolation: isolate;
   display: grid;
@@ -117,6 +170,7 @@ label {
 
 .experience[data-stage="5"] {
   --accent: #c19a49;
+  --stage-color: #d5b56e;
 }
 
 .masthead {
@@ -126,6 +180,13 @@ label {
   align-items: flex-start;
   justify-content: space-between;
   gap: 32px;
+}
+
+.masthead-side {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 10px;
 }
 
 .eyebrow {
@@ -198,6 +259,30 @@ h1 {
   transform: translate(-50%, -50%) scale(calc(0.95 + var(--strength) * 0.08));
   transform-origin: center;
   transition: opacity 180ms ease;
+}
+
+.experience[data-stage="0"] .stage-ghost {
+  font-family: "LiangStage-00", "Songti SC", STSong, "SimSun", serif;
+}
+
+.experience[data-stage="1"] .stage-ghost {
+  font-family: "LiangStage-01", "Songti SC", STSong, "SimSun", serif;
+}
+
+.experience[data-stage="2"] .stage-ghost {
+  font-family: "LiangStage-02", "Songti SC", STSong, "SimSun", serif;
+}
+
+.experience[data-stage="3"] .stage-ghost {
+  font-family: "LiangStage-03", "Songti SC", STSong, "SimSun", serif;
+}
+
+.experience[data-stage="4"] .stage-ghost {
+  font-family: "LiangStage-04", "Songti SC", STSong, "SimSun", serif;
+}
+
+.experience[data-stage="5"] .stage-ghost {
+  font-family: "LiangStage-05", "Songti SC", STSong, "SimSun", serif;
 }
 
 .portrait-shell {
@@ -373,7 +458,7 @@ h1 {
 .stage-name {
   min-width: 3.5em;
   margin: 0;
-  color: currentColor;
+  color: var(--stage-color);
   font-family: "Songti SC", STSong, "SimSun", serif;
   font-size: clamp(38px, 5.2vh, 58px);
   font-weight: 900;
@@ -383,8 +468,20 @@ h1 {
   text-shadow: 0 0 calc(var(--strength) * 24px) rgb(193 154 73 / 46%);
 }
 
-.experience[data-stage="5"] .stage-name {
-  color: #d5b56e;
+/* 新闻/对话模式下，状态标签、阶段读数与校准文案全部跟随阶段词（如“梁圣”）的颜色 */
+.experience[data-mode="news"] .stage-readout > span,
+.experience[data-mode="chat"] .stage-readout > span,
+.experience[data-mode="news"] .calibration-status,
+.experience[data-mode="chat"] .calibration-status {
+  color: var(--stage-color);
+}
+
+/* 新闻/对话模式下，阶段条带与校准文案整体等距上移 20px（底座滑杆保持原位） */
+.experience[data-mode="news"] .stage-markers,
+.experience[data-mode="chat"] .stage-markers,
+.experience[data-mode="news"] .calibration-status,
+.experience[data-mode="chat"] .calibration-status {
+  transform: translateY(-20px);
 }
 
 .control-panel {
@@ -397,13 +494,17 @@ h1 {
 }
 
 .mode-switch {
-  display: flex;
-  justify-content: center;
-  gap: 5px;
-  margin: 0 auto 12px;
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 3px;
+  border: 1px solid color-mix(in srgb, currentColor 22%, transparent);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--thumb-bg) 55%, transparent);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
 }
 
-.mode-btn,
 .news-refresh-btn,
 .chat-submit-btn {
   border: 1px solid color-mix(in srgb, currentColor 28%, transparent);
@@ -413,18 +514,31 @@ h1 {
 }
 
 .mode-btn {
-  padding: 7px 13px;
+  border: 0;
   border-radius: 999px;
+  padding: 6px 12px;
   color: var(--muted);
+  background: transparent;
   font-size: 10px;
   font-weight: 700;
-  letter-spacing: 0.06em;
+  letter-spacing: 0.08em;
+  cursor: pointer;
+  transition: color 180ms ease, background-color 180ms ease, box-shadow 180ms ease;
+}
+
+.mode-btn:hover {
+  color: currentColor;
 }
 
 .mode-btn.is-active {
-  border-color: var(--accent);
   color: var(--thumb-bg);
   background: var(--accent);
+  box-shadow: 0 1px 5px rgb(0 0 0 / 22%);
+}
+
+.mode-btn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
 
 .experience[data-mode="news"] .drag-hint,
@@ -435,10 +549,34 @@ h1 {
 .mode-panel {
   max-height: min(38vh, 360px);
   overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in srgb, var(--accent) 40%, transparent) transparent;
   padding: 16px;
   border: 1px solid color-mix(in srgb, currentColor 20%, transparent);
   background: color-mix(in srgb, var(--thumb-bg) 88%, transparent);
   box-shadow: 0 14px 44px rgb(0 0 0 / 8%);
+}
+
+/* 面板滚动条：细窄圆润，主题色适配（深色阶段自动变亮，阶段 5 金色） */
+.mode-panel::-webkit-scrollbar {
+  width: 8px;
+}
+
+.mode-panel::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.mode-panel::-webkit-scrollbar-thumb {
+  border: 1px solid transparent;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--accent) 38%, transparent);
+  background-clip: padding-box;
+}
+
+.mode-panel::-webkit-scrollbar-thumb:hover {
+  background: color-mix(in srgb, var(--accent) 62%, transparent);
+  background-clip: padding-box;
 }
 
 .experience[data-mode="news"] .mode-panel {
@@ -819,9 +957,120 @@ h1 {
   min-height: 0;
 }
 
+.chat-body {
+  display: grid;
+  grid-template-columns: minmax(120px, 168px) minmax(0, 1fr);
+  gap: 12px;
+  min-height: 0;
+  margin-top: 12px;
+}
+
+.chat-main {
+  display: grid;
+  grid-template-rows: minmax(0, 1fr) auto auto;
+  gap: 8px;
+  min-height: 0;
+}
+
+.chat-sidebar {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-height: 0;
+  padding-right: 10px;
+  border-right: 1px solid color-mix(in srgb, currentColor 12%, transparent);
+}
+
+.chat-new-btn {
+  flex: none;
+  padding: 6px 10px;
+  border-color: color-mix(in srgb, var(--accent) 55%, transparent);
+  color: var(--accent);
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.chat-new-btn:hover {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+}
+
+.chat-conversations {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-height: 0;
+  margin: 0;
+  padding: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  list-style: none;
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in srgb, var(--accent) 38%, transparent) transparent;
+}
+
+.chat-conversation {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  border: 1px solid transparent;
+}
+
+.chat-conversation.is-active {
+  border-color: color-mix(in srgb, var(--accent) 42%, transparent);
+  background: color-mix(in srgb, var(--accent) 9%, transparent);
+}
+
+.chat-conversation-open {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+  padding: 6px 8px;
+  text-align: left;
+  color: currentColor;
+  border: 0;
+  background: transparent;
+  font: inherit;
+}
+
+.chat-conversation-open strong {
+  overflow: hidden;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1.4;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chat-conversation-meta {
+  color: var(--muted);
+  font-family: "SFMono-Regular", Consolas, monospace;
+  font-size: 8px;
+}
+
+.chat-conversation-delete {
+  padding: 2px 7px;
+  border: 0;
+  color: var(--muted);
+  background: transparent;
+  font-size: 13px;
+  line-height: 1;
+}
+
+.chat-conversation-delete:hover {
+  color: var(--accent);
+}
+
+.chat-sidebar-empty {
+  margin: 0;
+  color: var(--muted);
+  font-size: 9px;
+  line-height: 1.6;
+  text-align: center;
+}
+
 .chat-thread {
   min-height: 140px;
-  margin-top: 12px;
   padding: 4px 8px 4px 0;
   overflow-y: auto;
   overscroll-behavior: contain;
@@ -900,6 +1149,15 @@ h1 {
   font-family: "Songti SC", STSong, "SimSun", serif;
   font-size: 15px;
   line-height: 1.8;
+}
+
+.chat-turn-score {
+  display: block;
+  margin-top: 6px;
+  color: var(--accent);
+  font-family: "SFMono-Regular", Consolas, monospace;
+  font-size: 9px;
+  letter-spacing: 0.06em;
 }
 
 .news-caveat {
@@ -1288,14 +1546,23 @@ h1 {
   .experience[data-mode="chat"] .portrait-zone {
     grid-column: 1;
     grid-row: 2;
-    padding-bottom: 165px;
+    /* 预留滑杆区高度：165px 在 1366x768 / 1536x864 下会被滑杆内容顶破，
+       校准文案压住阶段读数，故加宽到 210px（实测清除所有常见视口重叠） */
+    padding-bottom: 210px;
   }
 
   .experience[data-mode="news"] .portrait-shell,
   .experience[data-mode="news"] .stage-readout,
   .experience[data-mode="chat"] .portrait-shell,
   .experience[data-mode="chat"] .stage-readout {
-    width: min(34vw, calc(100svh - 330px), 500px);
+    /* 新闻/对话模式下头像缩小为原来的 80% */
+    width: min(27.2vw, calc((100svh - 330px) * 0.8), 400px);
+  }
+
+  .experience[data-mode="news"] .stage-ghost,
+  .experience[data-mode="chat"] .stage-ghost {
+    /* 新闻/对话模式下背景艺术字缩小 20% */
+    font-size: clamp(120px, 21.6vw, 336px);
   }
 
   .experience[data-mode="news"] .control-panel,
@@ -1313,18 +1580,10 @@ h1 {
     pointer-events: none;
   }
 
-  .experience[data-mode="news"] .mode-switch,
-  .experience[data-mode="chat"] .mode-switch {
-    grid-column: 1;
-    grid-row: 2;
-    margin-bottom: 8px;
-    pointer-events: auto;
-  }
-
   .experience[data-mode="news"] .slider-layout,
   .experience[data-mode="chat"] .slider-layout {
     grid-column: 1;
-    grid-row: 3;
+    grid-row: 2;
     pointer-events: auto;
   }
 
@@ -1341,7 +1600,7 @@ h1 {
 
   .experience[data-mode="chat"] .chat-panel {
     display: grid;
-    grid-template-rows: auto minmax(0, 1fr) auto auto;
+    grid-template-rows: auto minmax(0, 1fr);
     overflow: hidden;
   }
 
@@ -1417,18 +1676,67 @@ h1 {
     margin-top: 8px;
   }
 
+  .masthead {
+    flex-wrap: wrap;
+    row-gap: 10px;
+  }
+
+  .masthead-side {
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: flex-end;
+    width: 100%;
+    gap: 8px 12px;
+  }
+
   .mode-switch {
-    margin-bottom: 8px;
+    padding: 2px;
   }
 
   .mode-btn {
-    padding: 6px 9px;
+    padding: 5px 9px;
     font-size: 9px;
   }
 
   .mode-panel {
     max-height: 44vh;
     padding: 12px;
+  }
+
+  .chat-body {
+    grid-template-columns: 1fr;
+  }
+
+  .chat-sidebar {
+    flex-direction: row;
+    align-items: center;
+    max-height: 84px;
+    padding-right: 0;
+    padding-bottom: 8px;
+    overflow-y: auto;
+    border-right: 0;
+    border-bottom: 1px solid color-mix(in srgb, currentColor 12%, transparent);
+  }
+
+  .chat-new-btn {
+    flex: none;
+  }
+
+  .chat-conversations {
+    flex-direction: row;
+    gap: 6px;
+    overflow-x: auto;
+    overflow-y: hidden;
+  }
+
+  .chat-conversation {
+    flex: none;
+    width: 132px;
+  }
+
+  .chat-conversation-meta {
+    font-size: 7px;
   }
 
   .news-items {

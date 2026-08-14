@@ -1,4 +1,10 @@
 import { handlePostChat } from "./chat";
+import {
+  handleDeleteConversation,
+  handleGetConversation,
+  handleListConversations,
+} from "./conversations";
+import { handleGetModePositions, handlePutModePositions } from "./mode-position";
 import { handleGetNews } from "./news";
 import { handleGetNewsJob, handlePostNewsJob } from "./news-jobs";
 import { handleGetScore } from "./score";
@@ -33,6 +39,22 @@ async function dispatchApi(request: Request, env: Env): Promise<Response> {
   const newsJobMatch = url.pathname.match(/^\/api\/news\/jobs\/([0-9a-f-]+)$/iu);
   if (newsJobMatch && request.method === "GET") return handleGetNewsJob(newsJobMatch[1]);
   if (url.pathname === "/api/chat" && request.method === "POST") return handlePostChat(request, env);
+  if (url.pathname === "/api/conversations" && request.method === "GET") {
+    return handleListConversations(env);
+  }
+  const conversationMatch = url.pathname.match(/^\/api\/conversations\/([0-9a-f-]+)$/iu);
+  if (conversationMatch && request.method === "GET") {
+    return handleGetConversation(conversationMatch[1], env);
+  }
+  if (conversationMatch && request.method === "DELETE") {
+    return handleDeleteConversation(conversationMatch[1], env);
+  }
+  if (url.pathname === "/api/mode-positions" && request.method === "GET") {
+    return handleGetModePositions(env);
+  }
+  if (url.pathname === "/api/mode-positions" && request.method === "PUT") {
+    return handlePutModePositions(request, env);
+  }
   return jsonResponse({ error: "not found" }, { status: 404 });
 }
 

@@ -51,15 +51,20 @@ test("梁式对话连续保留上下文，输出区独立滚动", async ({ page 
   await expect(page.locator(".chat-turn--assistant")).toHaveCount(2);
 
   expect(api.chatRequests).toHaveLength(2);
+  const firstBody = api.chatRequests[0].postDataJSON() as {
+    message: string;
+    conversationId: string;
+  };
   const secondBody = api.chatRequests[1].postDataJSON() as {
     message: string;
-    history: Array<{ role: string; content: string }>;
+    conversationId: string;
   };
+  expect(firstBody.message).toBe("我们要不要先扩产品线？");
+  expect(firstBody.conversationId).toMatch(/^[0-9a-f-]{36}$/u);
   expect(secondBody.message).toBe("那下一步具体看什么？");
-  expect(secondBody.history).toEqual([
-    { role: "user", content: "我们要不要先扩产品线？" },
-    { role: "assistant", content: "我们可以先看真正的技术瓶颈，再决定要不要扩大产品线。" },
-  ]);
+  expect(secondBody.conversationId).toBe(firstBody.conversationId);
+  await expect(page.locator(".chat-turn--assistant").last().locator(".chat-turn-score"))
+    .toHaveText("梁圣 · +6");
   await expect(page.locator(".calibration-status")).toHaveText("由当前对话自动校准，变阻器将平滑移动到分析结果");
   await expect(page.locator("#strength-slider")).toBeDisabled();
   expect(api.voteRequests).toHaveLength(0);
@@ -93,4 +98,31 @@ test("从自动模式回到手动模式时恢复本机位置", async ({ page }) 
   await page.getByRole("button", { name: "手动" }).click();
   await expect(page.locator("#strength-slider")).toHaveValue("2.5");
   await expect(page.locator("#strength-slider")).toBeEnabled();
+});
+
+test("新闻模式位置在切回时保持，不丢失给手动模式", async ({ page }) => {
+  await installApiRoutes(page);
+  await page.goto(APP_PATH);
+  await page.getByRole("button", { name: "今日 AI 新闻" }).click();
+  await expect(page.locator("#strength-slider")).toHaveValue("9");
+  await page.getByRole("button", { name: "手动" }).click();
+  await expect(page.locator("#strength-slider")).toHaveValue("2.5");
+  await page.getByRole("button", { name: "今日 AI 新闻" }).click();
+  await expect(page.locator("#strength-slider")).toHaveValue("9");
+  await expect(page.locator("#strength-slider")).toBeDisabled();
+});
+
+test("对话模式位置在切回时保持，不丢失给手动模式", async ({ page }) => {
+  await installApiRoutes(page);
+  await page.goto(APP_PATH);
+  await page.getByRole("button", { name: "梁式对话" }).click();
+  await page.locator("#chat-input").fill("我们要不要先扩产品线？");
+  await page.getByRole("button", { name: "校准并回答" }).click();
+  await expect(page.locator(".chat-turn--assistant").last()).toContainText("真正的技术瓶颈");
+  await expect(page.locator("#strength-slider")).toHaveValue("6");
+  await page.getByRole("button", { name: "手动" }).click();
+  await expect(page.locator("#strength-slider")).toHaveValue("2.5");
+  await page.getByRole("button", { name: "梁式对话" }).click();
+  await expect(page.locator("#strength-slider")).toHaveValue("6");
+  await expect(page.locator("#strength-slider")).toBeDisabled();
 });

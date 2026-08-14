@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { handlePostChat } from "./chat";
+import { cleanAnswerText, handlePostChat } from "./chat";
 import type { Env } from "./shared";
 
 function envWithOpenCode(response: unknown): Env {
@@ -23,6 +23,28 @@ function request(body: unknown): Request {
     body: JSON.stringify(body),
   });
 }
+
+describe("cleanAnswerText", () => {
+  it("turns literal escaped newlines into real line breaks", () => {
+    expect(cleanAnswerText("第一段。\\n\\n第二段。")).toBe("第一段。\n\n第二段。");
+  });
+
+  it("collapses excessive blank lines", () => {
+    expect(cleanAnswerText("a\n\n\n\nb")).toBe("a\n\nb");
+  });
+
+  it("handles doubled escaping and carriage returns", () => {
+    expect(cleanAnswerText("行一\\\\n行二\\r\\n行三")).toBe("行一\n行二\n行三");
+  });
+
+  it("trims surrounding whitespace", () => {
+    expect(cleanAnswerText("  前后留白  ")).toBe("前后留白");
+  });
+
+  it("leaves clean text untouched", () => {
+    expect(cleanAnswerText("正常回答。")).toBe("正常回答。");
+  });
+});
 
 describe("chat API", () => {
   afterEach(() => vi.unstubAllGlobals());
@@ -50,7 +72,16 @@ describe("chat API", () => {
       "不要提及 OpenCode",
     );
     expect((env.AI_RUNNER as ReturnType<typeof vi.fn>).mock.calls[0][0]).toContain(
-      "Now speak as Wenfeng Liang.",
+      "现在以梁文锋口吻回答",
+    );
+    expect((env.AI_RUNNER as ReturnType<typeof vi.fn>).mock.calls[0][0]).toContain(
+      "小难梁（梁认怂）",
+    );
+    expect((env.AI_RUNNER as ReturnType<typeof vi.fn>).mock.calls[0][0]).toContain(
+      "总分越高对应梁圣及以上（DeepSeek 做出好模型、取得成就）",
+    );
+    expect((env.AI_RUNNER as ReturnType<typeof vi.fn>).mock.calls[0][0]).not.toContain(
+      "评估当前用户输入本身与五个思考镜片的吻合程度",
     );
   });
 
@@ -108,5 +139,133 @@ describe("chat API", () => {
     expect((env.AI_RUNNER as ReturnType<typeof vi.fn>).mock.calls[1][3]).toEqual({
       reasoningEffort: "low",
     });
+  });
+
+  it("uses stored history and persists both turns with the per-answer score", async () => {
+    const binds: unknown[][] = [];
+    const statement = {
+      bind: vi.fn(function (this: unknown, ...values: unknown[]) {
+        binds.push(values);
+        return this;
+      }),
+      first: vi.fn()
+        .mockResolvedValueOnce(null)
+        .mockResolvedValueOnce({
+          id: "00000000-0000-4000-8000-000000000001",
+          title: "先做原创研究",
+        }),
+      all: vi.fn().mockResolvedValue({
+        success: true,
+        results: [
+          { role: "user", content: "先做原创研究" },
+          { role: "assistant", content: "先看真正的瓶颈。" },
+        ],
+      }),
+      run: vi.fn().mockResolvedValue({ success: true }),
+    };
+    const env = {
+      DB: { prepare: vi.fn().mockReturnValue(statement) } as unknown as AppDatabase,
+      AI_RUNNER: vi.fn().mockResolvedValue({
+        answer: "把技术瓶颈量化。",
+        calibrationSummary: "延续上文。",
+        dimensions: { originality: 0.4, openness: 0.1, efficiency: 0.3, intelligence: 0.5, restraint: 0.1 },
+      }),
+      VOTER_HASH_SECRET: "a".repeat(32),
+      ALLOWED_ORIGINS: "https://app.example",
+    };
+
+    const response = await handlePostChat(
+      request({ message: "下一步呢？", conversationId: "00000000-0000-4000-8000-000000000001" }),
+      env,
+    );
+    expect(response.status).toBe(200);
+    const body = await response.json() as { conversation: { id: string; title: string } };
+    expect(body.conversation).toEqual({
+      id: "00000000-0000-4000-8000-000000000001",
+      title: "先做原创研究",
+    });
+
+    const prompt = (env.AI_RUNNER as ReturnType<typeof vi.fn>).mock.calls[0][1] as string;
+    expect(prompt).toContain("先做原创研究");
+    expect(prompt).toContain("先看真正的瓶颈。");
+    expect(prompt).toContain("下一步呢？");
+
+    const userInsert = binds.find((values) => values[1] === "user");
+    const assistantInsert = binds.find((values) => values[1] === "assistant");
+    expect(userInsert?.[2]).toBe("下一步呢？");
+    expect(assistantInsert?.[2]).toBe("把技术瓶颈量化。");
+    expect(assistantInsert?.[3]).toBe(4.8);
+    expect(assistantInsert?.[4]).toBe("梁圣");
+    expect(JSON.parse(String(assistantInsert?.[6]))).toMatchObject({ originality: 0.4 });
+  });
+
+  it("creates a conversation on the first message and returns its id", async () => {
+    const binds: unknown[][] = [];
+    const statement = {
+      bind: vi.fn(function (this: unknown, ...values: unknown[]) {
+        binds.push(values);
+        return this;
+      }),
+      first: vi.fn().mockResolvedValue(null),
+      all: vi.fn(),
+      run: vi.fn().mockResolvedValue({ success: true }),
+    };
+    const env = {
+      DB: { prepare: vi.fn().mockReturnValue(statement) } as unknown as AppDatabase,
+      AI_RUNNER: vi.fn().mockResolvedValue({
+        answer: "先看真正的瓶颈。",
+        calibrationSummary: "偏向主线。",
+        dimensions: { originality: 0.5, openness: 0.2, efficiency: 0.2, intelligence: 0.4, restraint: 0.2 },
+      }),
+      VOTER_HASH_SECRET: "a".repeat(32),
+      ALLOWED_ORIGINS: "https://app.example",
+    };
+
+    const response = await handlePostChat(request({ message: "我们要不要先扩产品线？" }), env);
+    expect(response.status).toBe(200);
+    const body = await response.json() as { conversation: { id: string; title: string } };
+    expect(body.conversation.id).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/iu);
+    expect(body.conversation.title).toBe("我们要不要先扩产品线？");
+
+    const conversationInsert = binds.find((values) =>
+      typeof values[0] === "string" && values[1] === "我们要不要先扩产品线？");
+    expect(conversationInsert).toBeDefined();
+  });
+
+  it("creates a conversation when a client-provided id is not found yet", async () => {
+    const binds: unknown[][] = [];
+    const statement = {
+      bind: vi.fn(function (this: unknown, ...values: unknown[]) {
+        binds.push(values);
+        return this;
+      }),
+      first: vi.fn().mockResolvedValue(null),
+      all: vi.fn(),
+      run: vi.fn().mockResolvedValue({ success: true }),
+    };
+    const env = {
+      DB: { prepare: vi.fn().mockReturnValue(statement) } as unknown as AppDatabase,
+      AI_RUNNER: vi.fn().mockResolvedValue({
+        answer: "先把瓶颈量化。",
+        calibrationSummary: "偏向主线。",
+        dimensions: { originality: 0.4, openness: 0.2, efficiency: 0.3, intelligence: 0.5, restraint: 0.2 },
+      }),
+      VOTER_HASH_SECRET: "a".repeat(32),
+      ALLOWED_ORIGINS: "https://app.example",
+    };
+
+    const response = await handlePostChat(
+      request({ message: "先做原创研究", conversationId: "00000000-0000-4000-8000-000000000001" }),
+      env,
+    );
+    expect(response.status).toBe(200);
+    const body = await response.json() as { conversation: { id: string; title: string } };
+    expect(body.conversation).toEqual({
+      id: "00000000-0000-4000-8000-000000000001",
+      title: "先做原创研究",
+    });
+    const conversationInsert = binds.find((values) =>
+      typeof values[0] === "string" && values[1] === "先做原创研究");
+    expect(conversationInsert).toBeDefined();
   });
 });

@@ -32,14 +32,20 @@ export interface ApiRouteLog {
   preflightRequests: Request[];
   newsRequests: Request[];
   chatRequests: Request[];
+  conversationRequests: Request[];
+  modePositionRequests: Request[];
 }
 
-const corsHeaders = {
-  "Access-Control-Allow-Origin": PAGE_ORIGIN,
-  "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
-  "Access-Control-Allow-Headers": "Content-Type",
-  Vary: "Origin",
-};
+// 镜像真实服务器的回显行为：允许来源跟随页面实际端口，
+// 便于在任意预览端口（如 5173 被占用时的临时端口）运行 e2e。
+function corsHeadersFor(origin: string) {
+  return {
+    "Access-Control-Allow-Origin": origin,
+    "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
+    "Access-Control-Allow-Headers": "Content-Type",
+    Vary: "Origin",
+  };
+}
 
 const NEWS_JOB_ID = "00000000-0000-4000-8000-000000000014";
 const NEWS_RESULT = {
@@ -108,7 +114,11 @@ function voteScore(position: number) {
   };
 }
 
-async function failRoute(route: Route, failure: EndpointFailure): Promise<void> {
+async function failRoute(
+  route: Route,
+  failure: EndpointFailure,
+  corsHeaders: Record<string, string>,
+): Promise<void> {
   if (failure === "abort") {
     await route.abort("failed");
     return;
@@ -132,10 +142,14 @@ export async function installApiRoutes(
     preflightRequests: [],
     newsRequests: [],
     chatRequests: [],
+    conversationRequests: [],
+    modePositionRequests: [],
   };
+  let storedModePositions = { news: null as number | null, chat: null as number | null };
 
   await page.route(`${API_ORIGIN}/api/**`, async (route) => {
     const request = route.request();
+    const corsHeaders = corsHeadersFor(new URL(page.url()).origin || PAGE_ORIGIN);
     if (request.method() === "OPTIONS") {
       log.preflightRequests.push(request);
       await route.fulfill({ status: 204, headers: corsHeaders, body: "" });
@@ -146,7 +160,7 @@ export async function installApiRoutes(
     if (pathname === "/api/score") {
       log.scoreRequests.push(request);
       if (options.scoreFailure) {
-        await failRoute(route, options.scoreFailure);
+        await failRoute(route, options.scoreFailure, corsHeaders);
         return;
       }
       await route.fulfill({
@@ -170,7 +184,7 @@ export async function installApiRoutes(
     if (pathname === "/api/vote") {
       log.voteRequests.push(request);
       if (options.voteFailure) {
-        await failRoute(route, options.voteFailure);
+        await failRoute(route, options.voteFailure, corsHeaders);
         return;
       }
       const body = request.postDataJSON() as { position: number };
@@ -190,7 +204,7 @@ export async function installApiRoutes(
     if (pathname === "/api/news/jobs" && request.method() === "POST") {
       log.newsRequests.push(request);
       if (options.newsFailure) {
-        await failRoute(route, options.newsFailure);
+        await failRoute(route, options.newsFailure, corsHeaders);
         return;
       }
       await route.fulfill({
@@ -213,9 +227,11 @@ export async function installApiRoutes(
     if (pathname === "/api/chat") {
       log.chatRequests.push(request);
       if (options.chatFailure) {
-        await failRoute(route, options.chatFailure);
+        await failRoute(route, options.chatFailure, corsHeaders);
         return;
       }
+      const body = request.postDataJSON() as { message: string; conversationId?: string };
+      const conversationId = body.conversationId ?? "00000000-0000-4000-8000-000000000099";
       await route.fulfill({
         headers: corsHeaders,
         contentType: "application/json",
@@ -226,7 +242,49 @@ export async function installApiRoutes(
           calibrationSummary: "这段输入偏向主线意识，但还缺少成本约束。",
           dimensions: { originality: 0.4, openness: 0.2, efficiency: 0.2, intelligence: 0.7, restraint: 0.5 },
           disclaimer: "基于公开材料的模拟，不代表本人。",
+          conversation: { id: conversationId, title: body.message.slice(0, 24) },
         }),
+      });
+      return;
+    }
+
+    if (pathname === "/api/conversations" && request.method() === "GET") {
+      log.conversationRequests.push(request);
+      await route.fulfill({
+        headers: corsHeaders,
+        contentType: "application/json",
+        body: "[]",
+      });
+      return;
+    }
+
+    if (/^\/api\/conversations\/[0-9a-f-]{36}$/.test(pathname) && request.method() === "DELETE") {
+      log.conversationRequests.push(request);
+      await route.fulfill({ status: 204, headers: corsHeaders, body: "" });
+      return;
+    }
+
+    if (pathname === "/api/mode-positions" && request.method() === "GET") {
+      log.modePositionRequests.push(request);
+      await route.fulfill({
+        headers: corsHeaders,
+        contentType: "application/json",
+        body: JSON.stringify(storedModePositions),
+      });
+      return;
+    }
+
+    if (pathname === "/api/mode-positions" && request.method() === "PUT") {
+      log.modePositionRequests.push(request);
+      const body = request.postDataJSON() as { news?: number | null; chat?: number | null };
+      storedModePositions = {
+        news: body.news === undefined ? storedModePositions.news : body.news,
+        chat: body.chat === undefined ? storedModePositions.chat : body.chat,
+      };
+      await route.fulfill({
+        headers: corsHeaders,
+        contentType: "application/json",
+        body: JSON.stringify(storedModePositions),
       });
       return;
     }
