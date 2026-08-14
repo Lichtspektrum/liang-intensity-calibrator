@@ -1,11 +1,16 @@
 import { readFile } from "node:fs/promises";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   buildOpenCodeArgs,
   buildPrompt,
   parseJsonText,
   parseOpenCodeEvents,
+  resolveOpenCodeModel,
 } from "./opencode-runner";
+
+afterEach(() => {
+  vi.unstubAllEnvs();
+});
 
 describe("OpenCode CLI runner", () => {
   it("parses structured JSON from OpenCode text events", () => {
@@ -61,6 +66,17 @@ describe("OpenCode CLI runner", () => {
     expect(args).toEqual(
       expect.arrayContaining(["--pure", "--variant", "low"]),
     );
+  });
+
+  it("defaults to the free model and honors the OPENCODE_MODEL override", () => {
+    expect(resolveOpenCodeModel()).toBe("opencode/deepseek-v4-flash-free");
+    expect(buildOpenCodeArgs()).toContain("opencode/deepseek-v4-flash-free");
+
+    vi.stubEnv("OPENCODE_MODEL", "opencode-go/deepseek-v4-flash");
+    expect(resolveOpenCodeModel()).toBe("opencode-go/deepseek-v4-flash");
+    const args = buildOpenCodeArgs({ reasoningEffort: "low" });
+    expect(args).toContain("--model");
+    expect(args).toContain("opencode-go/deepseek-v4-flash");
   });
 
   it("permits only the Liang skill and web research tools", async () => {

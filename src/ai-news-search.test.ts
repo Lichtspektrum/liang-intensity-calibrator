@@ -21,4 +21,16 @@ describe("OpenCode AI news search", () => {
     expect(items).toHaveLength(1);
     expect(runner.mock.calls.map((call) => call[0]).join(" ")).toContain("websearch");
   });
+
+  it("instructs both languages to search DeepSeek competitor news explicitly", async () => {
+    const runner = vi.fn()
+      .mockResolvedValue({ items: [] });
+    await searchTodaysAiNews("2026-08-14", runner);
+    const prompts = runner.mock.calls.map((call) => `${call[0]}\n${call[1]}`).join("\n");
+    expect(prompts).toContain("专门搜索 DeepSeek 主要竞争对手");
+    expect(prompts).toContain("千问");
+    expect(prompts).toContain("智谱");
+    expect(prompts).toContain("Anthropic");
+    expect(prompts).toContain("OpenAI");
+  });
 });

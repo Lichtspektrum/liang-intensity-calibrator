@@ -1,12 +1,21 @@
 import { spawn } from "node:child_process";
-import { mkdir } from "node:fs/promises";
-import { tmpdir } from "node:os";
+import { copyFile, mkdir } from "node:fs/promises";
+import { homedir, tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import type { StructuredAiOptions, StructuredAiPayload } from "./ai-runtime";
 
 export const OPENCODE_MODEL = "opencode/deepseek-v4-flash-free";
+
+/**
+ * 解析实际使用的模型：优先环境变量 OPENCODE_MODEL（本项目自定义选项，
+ * 可在 .env.local 或进程环境中设置，如 opencode-go/deepseek-v4-flash），
+ * 未设置时回退到默认免费模型。运行时读取，确保 .env.local 已加载。
+ */
+export function resolveOpenCodeModel(): string {
+  return process.env.OPENCODE_MODEL?.trim() || OPENCODE_MODEL;
+}
 const MODULE_DIR = dirname(fileURLToPath(import.meta.url));
 const PROJECT_ROOT = join(MODULE_DIR, "..");
 const RUNTIME_DIR = join(PROJECT_ROOT, "server", "opencode-runtime");
@@ -194,7 +203,7 @@ export function buildPrompt(payload: StructuredAiPayload): string {
 export function buildOpenCodeArgs(options: OpenCodeOptions = {}): string[] {
   const args = [
     "run", "--pure", "--format", "json",
-    "--model", OPENCODE_MODEL,
+    "--model", resolveOpenCodeModel(),
     "--dir", RUNTIME_DIR,
   ];
   if (options.reasoningEffort) args.push("--variant", options.reasoningEffort);
@@ -205,8 +214,19 @@ export async function runOpenCode(
   payload: StructuredAiPayload,
   options: OpenCodeOptions = {},
 ): Promise<unknown> {
-  await mkdir(join(STATE_ROOT, "data"), { recursive: true });
+  await mkdir(join(STATE_ROOT, "data", "opencode"), { recursive: true });
   await mkdir(join(STATE_ROOT, "config"), { recursive: true });
+  // 隔离的 XDG_DATA_HOME 会让 CLI 找不到宿主 opencode 的登录凭据（auth.json），
+  // 导致 opencode-go 等需要登录的模型报 "Unexpected server error"。
+  // 每次运行前把宿主凭据同步进隔离数据目录；无凭据或复制失败时跳过（免费模型不需要）。
+  try {
+    await copyFile(
+      join(homedir(), ".local", "share", "opencode", "auth.json"),
+      join(STATE_ROOT, "data", "opencode", "auth.json"),
+    );
+  } catch {
+    // 忽略：免费模型无需认证。
+  }
   const binary = options.binary ?? process.env.OPENCODE_BIN ?? defaultBinary();
   const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
   const args = buildOpenCodeArgs(options);

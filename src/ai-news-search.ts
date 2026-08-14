@@ -26,6 +26,33 @@ const SEARCH_SCHEMA = {
   required: ["items"],
 };
 
+/**
+ * DeepSeek 的主要竞争对手（经联网核实的名单）。
+ * 新闻搜索与校准分析共用，确保"竞争对手动态"有明确对象而非泛泛而谈。
+ */
+export const COMPETITOR_NAMES = [
+  "阿里巴巴千问 Qwen",
+  "智谱 GLM",
+  "月之暗面 Kimi",
+  "字节跳动豆包 Doubao/Seed",
+  "MiniMax",
+  "百度文心 Ernie",
+  "腾讯混元 Hunyuan",
+  "阶跃星辰 Step",
+  "百川 Baichuan",
+  "零一万物 Yi",
+  "OpenAI GPT/ChatGPT",
+  "Anthropic Claude",
+  "Google DeepMind Gemini",
+  "Meta Llama",
+  "xAI Grok",
+  "Mistral",
+  "Microsoft Phi",
+] as const;
+
+export const COMPETITOR_COVERAGE_INSTRUCTION =
+  `必须专门搜索 DeepSeek 主要竞争对手的当日动态：${COMPETITOR_NAMES.join("、")} 等，覆盖模型发布、技术突破、开源动作、产品上线与公司重大变化。`;
+
 function stableId(value: string): string {
   let hash = 2166136261;
   for (const character of value) {
@@ -85,12 +112,13 @@ async function searchLanguage(
       "发布日期不明确、早于目标日期、未来日期、没有可访问 URL 的条目一律丢弃。",
       "优先官方实验室、论文、项目发布页，其次可靠科技媒体；不要把搜索摘要本身当作来源。",
       "不要编造事实、URL、时间或来源。",
+      COMPETITOR_COVERAGE_INSTRUCTION,
     ].join("\n"),
     [
       `目标日期：${date}（Asia/Singapore）`,
       isChinese
-        ? "搜索中文与中国科技来源中的全球 AI/大模型新闻，覆盖模型发布、研究突破、开源生态、推理效率、算力与重要公司动态。输出中文摘要。"
-        : "Search English-language and international sources for AI/LLM news, covering model releases, research breakthroughs, open-source ecosystems, inference efficiency, compute, and major company moves. Keep summaries in Chinese.",
+        ? "搜索中文与中国科技来源中的全球 AI/大模型新闻，覆盖模型发布、研究突破、开源生态、推理效率、算力与重要公司动态；优先纳入上一条列出的 DeepSeek 竞争对手（千问/智谱/Kimi/豆包/MiniMax/文心/混元/阶跃/百川/零一万物/OpenAI/Anthropic/Google/Meta/xAI/Mistral/Microsoft）的新闻。输出中文摘要。"
+        : "搜索英文与国际来源的全球 AI/大模型新闻，覆盖模型发布、研究突破、开源生态、推理效率、算力与重要公司动态；优先纳入 DeepSeek 主要竞争对手（Qwen/GLM/Kimi/Doubao/MiniMax/Ernie/Hunyuan/Step/Baichuan/Yi/OpenAI/Anthropic/Google/Meta/xAI/Mistral/Microsoft）的新闻。输出中文摘要。",
       "只返回目标日期当天发布的新闻。若没有合格新闻，返回空 items。",
     ].join("\n"),
     SEARCH_SCHEMA,

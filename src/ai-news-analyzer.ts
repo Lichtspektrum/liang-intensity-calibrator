@@ -9,6 +9,7 @@ import {
   type TranscriptQuote,
 } from "./liang-profile";
 import type { AiNewsItem } from "./ai-news-collector";
+import { COMPETITOR_NAMES } from "./ai-news-search";
 import { runStructuredAi } from "./ai-runtime";
 
 export interface AnalyzedNewsItem extends AiNewsItem {
@@ -168,7 +169,7 @@ export async function analyzeTodaysNews(
       quote: selectTranscriptQuote(dimensions),
       quoteSource: ORIGINAL_MEETING_ARTICLE,
       transcriptSource: TIMESTAMPED_TRANSCRIPT,
-      sourceCaveat: "网传会议文字由录音转写并经 AI 整理，未经梁文锋或 DeepSeek 确认。",
+      sourceCaveat: "语录文字由录音转写并经 AI 整理，非官方来源。",
       items: [],
       collectedAt,
     };
@@ -179,7 +180,7 @@ export async function analyzeTodaysNews(
   }));
   const result = await runner(
     `${LIANG_PROFILE}\n\n你现在只做新闻证据分析，不模仿人物口吻。不得补充输入中没有的事实。`,
-    `分析 ${date} 的 AI 新闻。对每条评估：与梁文锋公开思考框架的相关性、行业影响、来源可信度，以及五个方向的信号（-1 强烈背离，0 无信号，1 强烈吻合）：原创贡献、开放生态、成本效率、智能主线、战略克制。\n\n新闻：${JSON.stringify(compactItems)}`,
+    `分析 ${date} 的 AI 新闻。对每条评估：与梁文锋/DeepSeek 处境的相关性、行业影响、来源可信度，以及五个方向的信号（-1 强烈负面，0 无信号，1 强烈正面）：原创贡献、开放生态、成本效率、智能主线、战略克制。信号打分锚点：DeepSeek 自己做出大成绩（新模型发布、技术突破、取得成就）→ 强烈正面，推动总分飙升；有利于 AI 整体发展但既非 DeepSeek 也非其竞争对手的成就（行业性进展、开源生态、通用技术）→ 中肯的轻度正面；DeepSeek 自己拉了（失误、倒退、出问题）→ 负面；被主要竞争对手（${COMPETITOR_NAMES.join("、")}）明显 KO，或竞争对手发布更强模型/重大突破直接挤压 DeepSeek 处境 → 负面；与 DeepSeek 处境无关 → 0。\n\n新闻：${JSON.stringify(compactItems)}`,
     NEWS_SCHEMA,
     { onActivity },
   );
@@ -200,7 +201,7 @@ export async function analyzeTodaysNews(
     quote: selectTranscriptQuote(aggregate.dimensions),
     quoteSource: ORIGINAL_MEETING_ARTICLE,
     transcriptSource: TIMESTAMPED_TRANSCRIPT,
-    sourceCaveat: "原文为 elsewhere 收集整理；时间戳版由录音 ASR/AI 整理，均未经梁文锋或 DeepSeek 确认。",
+    sourceCaveat: "时间戳版由录音 ASR/AI 整理，非官方来源。",
     items,
     collectedAt,
   };

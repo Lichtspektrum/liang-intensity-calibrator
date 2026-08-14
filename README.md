@@ -7,11 +7,11 @@
 - 六个状态：小难梁、牢梁、梁子、梁圣、梁神、梁祖
 - 滑杆范围为 -15 到 +15，支持鼠标、触摸和键盘
 - 本机记忆上一次手动校准位置
-- 新闻模式：采集当天 AI 新闻，再按原创、开放、效率、智能与克制五个维度校准
+- 新闻模式：采集当天 AI 新闻，再按原创、开放、效率、智能与克制五个维度校准；搜索提示词会专门覆盖 DeepSeek 主要竞争对手（千问/智谱/Kimi/豆包/MiniMax/文心/混元/OpenAI/Anthropic/Google/Meta/xAI/Mistral 等）的当日动态
 - 新闻采集显示真实分阶段进度、来源计数、耗时和详细事件；完成后在校准结论旁以安全 Markdown 展示新闻
 - 对话模式：连续保留上下文，校准输入，并以梁文锋第一人称角色和公开材料提炼出的思考框架回答
 - 对话历史：每个对话保留在侧边栏，可查看、继续或删除；每次回答都会记录当时的强度分值与阶段，重新打开对话时变阻器回到最后一次回答的分值
-- 所有需要 LLM 的搜索、分析和回答均通过本地 OpenCode CLI，并固定使用 `opencode/deepseek-v4-flash-free`
+- 所有需要 LLM 的搜索、分析和回答均通过本地 OpenCode CLI，默认使用 `opencode/deepseek-v4-flash-free`；可用环境变量 `OPENCODE_MODEL` 自定义模型（如免费额度用尽时切到 `opencode-go/deepseek-v4-flash`，可在 `.env.local` 中设置）
 
 模型不需要 API key。新闻搜索可调用 OpenCode 的 `websearch` 与 `webfetch`，分析和对话可读取项目内提炼的梁文锋 skill。
 
