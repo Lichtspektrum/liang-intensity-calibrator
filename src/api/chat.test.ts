@@ -310,4 +310,62 @@ describe("chat API", () => {
     // 失败不写任何数据：没有限流计数，也没有对话持久化。
     expect(statement.run).not.toHaveBeenCalled();
   });
+
+  it("defaults missing dimensions to neutral instead of failing the turn", async () => {
+    const statement = {
+      bind: vi.fn().mockReturnThis(),
+      first: vi.fn().mockResolvedValue(null),
+      all: vi.fn(),
+      run: vi.fn().mockResolvedValue({ success: true }),
+    };
+    const env = {
+      DB: { prepare: vi.fn().mockReturnValue(statement) } as unknown as AppDatabase,
+      AI_RUNNER: vi.fn().mockResolvedValue({
+        answer: "先看真正的瓶颈。",
+        calibrationSummary: "偏向主线。",
+        // 模型漏掉了 restraint 维度
+        dimensions: { originality: 1, openness: 1, efficiency: 1, intelligence: 1 },
+      }),
+      VOTER_HASH_SECRET: "a".repeat(32),
+      ALLOWED_ORIGINS: "https://app.example",
+    };
+
+    const response = await handlePostChat(request({ message: "先做原创研究" }), env);
+    expect(response.status).toBe(200);
+    const body = await response.json() as { dimensions: Record<string, number> };
+    expect(body.dimensions).toMatchObject({
+      originality: 1,
+      openness: 1,
+      efficiency: 1,
+      intelligence: 1,
+      restraint: 0,
+    });
+  });
+
+  it("retries once when the model output is structurally invalid", async () => {
+    const statement = {
+      bind: vi.fn().mockReturnThis(),
+      first: vi.fn().mockResolvedValue(null),
+      all: vi.fn(),
+      run: vi.fn().mockResolvedValue({ success: true }),
+    };
+    const dimensions = { originality: 0.5, openness: 0.2, efficiency: 0.3, intelligence: 0.4, restraint: 0.2 };
+    const env = {
+      DB: { prepare: vi.fn().mockReturnValue(statement) } as unknown as AppDatabase,
+      AI_RUNNER: vi.fn()
+        // 首次输出 answer 为空字符串 → 结构不合法，触发重试
+        .mockResolvedValueOnce({ answer: "", calibrationSummary: "x", dimensions })
+        .mockResolvedValueOnce({ answer: "先看真正的瓶颈。", calibrationSummary: "y", dimensions }),
+      VOTER_HASH_SECRET: "a".repeat(32),
+      ALLOWED_ORIGINS: "https://app.example",
+    };
+
+    const response = await handlePostChat(request({ message: "测试" }), env);
+    expect(response.status).toBe(200);
+    const body = await response.json() as { answer: string };
+    expect(body.answer).toBe("先看真正的瓶颈。");
+    expect(env.AI_RUNNER).toHaveBeenCalledTimes(2);
+    const retrySystem = (env.AI_RUNNER as ReturnType<typeof vi.fn>).mock.calls[1][0] as string;
+    expect(retrySystem).toContain("上次输出不符合 schema");
+  });
 });
