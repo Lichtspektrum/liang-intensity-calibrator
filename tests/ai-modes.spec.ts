@@ -43,10 +43,10 @@ test("梁式对话连续保留上下文，输出区独立滚动", async ({ page 
   await page.getByRole("button", { name: "梁式对话" }).click();
 
   await page.locator("#chat-input").fill("我们要不要先扩产品线？");
-  await page.getByRole("button", { name: "校准并回答" }).click();
+  await page.locator("#chat-input").press("Enter");
   await expect(page.locator(".chat-turn--assistant").last()).toContainText("真正的技术瓶颈");
   await page.locator("#chat-input").fill("那下一步具体看什么？");
-  await page.getByRole("button", { name: "校准并回答" }).click();
+  await page.locator(".chat-submit-btn").click();
   await expect(page.locator(".chat-turn--user")).toHaveCount(2);
   await expect(page.locator(".chat-turn--assistant")).toHaveCount(2);
 
@@ -117,7 +117,7 @@ test("对话模式位置在切回时保持，不丢失给手动模式", async ({
   await page.goto(APP_PATH);
   await page.getByRole("button", { name: "梁式对话" }).click();
   await page.locator("#chat-input").fill("我们要不要先扩产品线？");
-  await page.getByRole("button", { name: "校准并回答" }).click();
+  await page.locator(".chat-submit-btn").click();
   await expect(page.locator(".chat-turn--assistant").last()).toContainText("真正的技术瓶颈");
   await expect(page.locator("#strength-slider")).toHaveValue("6");
   await page.getByRole("button", { name: "手动" }).click();
