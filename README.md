@@ -25,3 +25,12 @@
 `media` 与 `public/frames` 里的人像素材用于趣味演示。复用或二次发布前，请确认你拥有相关肖像与素材的使用权。
 
 社区投票功能的最初思路来自 [PR #7](https://github.com/Lichtspektrum/liang-intensity-calibrator/pull/7) 的 [@loggerhead](https://github.com/loggerhead)。
+
+---
+
+## Awesome 滑动变祖器
+
+这里收集社区基于「滑动变祖器」的二创作品。把滑杆玩出花样的朋友们，欢迎通过 [Pull Request](https://github.com/Lichtspektrum/liang-intensity-calibrator/pulls) 提交你的项目：
+
+- [Liang-Saint-Slider](https://github.com/BruzWJ/Liang-Saint-Slider) — by [@BruzWJ](https://github.com/BruzWJ)：把滑杆做成 DeepSeek Harness 的模型与思考强度选择器。
+- [liang-intensity-calibrator-ascii](https://github.com/Lichtspektrum/liang-intensity-calibrator-ascii) — by [@Lichtspektrum](https://github.com/Lichtspektrum)：ASCII 版，由原项目 31 张关键帧逐帧转出的纯 ASCII 动画。
