@@ -439,26 +439,46 @@ describe("liang slider app", () => {
     expect(labels).toEqual(["小难梁", "牢梁", "梁子", "梁圣", "梁神", "梁祖"]);
   });
 
+  it("时间线节点显示日期、当日分数与总投票人数", () => {
+    const controller = mountApp(root);
+
+    controller.setTimelineEvents([
+      { date: "2026-08-14", score: -1.09, stage: "梁子", voterCount: 337 },
+      { date: "2026-08-13", score: 3, stage: "梁圣", voterCount: 96 },
+    ]);
+
+    const dateLabels = Array.from(root.querySelectorAll(".timeline-node-date"), (node) =>
+      node.textContent,
+    );
+    const statsLabels = Array.from(root.querySelectorAll(".timeline-node-stats"), (node) =>
+      node.textContent,
+    );
+    expect(dateLabels).toEqual(["08-14", "08-13"]);
+    expect(statsLabels).toEqual(["-1.1 · 337 人", "+3 · 96 人"]);
+    expect(root.querySelector(".timeline-node")?.getAttribute("aria-label")).toBe(
+      "2026-08-14: 梁子 · -1.1 · 337 人",
+    );
+  });
+
   it("把时间线标题和日期当作纯文本与属性处理", () => {
     const controller = mountApp(root);
     const maliciousDate = '2026-08-13\"><script>window.pwned=1</script>';
-    const maliciousTitle = '梁圣\"><img src=x onerror=alert(1)>';
     const selected: string[] = [];
     controller.onHistorySelect = (date) => selected.push(date);
 
     controller.setTimelineEvents([{
-      id: 1,
       date: maliciousDate,
-      title: maliciousTitle,
-      summary: null,
-      isMajor: false,
+      score: 2.5,
+      stage: "梁圣",
+      voterCount: 4,
     }]);
 
     const button = root.querySelector<HTMLButtonElement>(".timeline-node")!;
     expect(root.querySelector("script, img")).toBeNull();
     expect(button.dataset.date).toBe(maliciousDate);
-    expect(button.dataset.title).toBe(maliciousTitle);
-    expect(button.getAttribute("aria-label")).toBe(`${maliciousDate}: ${maliciousTitle}`);
+    expect(button.getAttribute("aria-label")).toBe(
+      `${maliciousDate}: 梁圣 · +2.5 · 4 人`,
+    );
     expect(button.textContent).toContain(maliciousDate.slice(5));
     button.click();
     expect(selected).toEqual([maliciousDate]);

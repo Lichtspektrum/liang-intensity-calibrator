@@ -9,7 +9,6 @@ import { handleScheduled } from "./scheduled";
 import type { Env } from "./shared";
 import {
   handleGetTimeline,
-  handleGetTimelineDay,
   recordDailySnapshot,
 } from "./timeline";
 
@@ -130,31 +129,36 @@ describe("timeline API", () => {
     await expect(response.json()).resolves.toEqual([]);
   });
 
-  it("keeps the transitional day endpoint on the snapshot table", async () => {
-    insertSnapshot("2026-08-14", 2.5, 4);
+  it("filters snapshots by from/to date parameters", async () => {
+    for (let day = 1; day <= 10; day += 1) {
+      const date = new Date(Date.UTC(2026, 0, day)).toISOString().slice(0, 10);
+      insertSnapshot(date, day, day);
+    }
 
-    const response = await handleGetTimelineDay(
-      new Request("https://api.example.com/api/timeline/2026-08-14"),
+    const response = await handleGetTimeline(
+      new Request("https://api.example.com/api/timeline?from=2026-01-03&to=2026-01-05"),
       env,
-      "2026-08-14",
     );
+    const body = await response.json() as Array<Record<string, unknown>>;
 
-    expect(response.status).toBe(200);
-    await expect(response.json()).resolves.toEqual({
-      date: "2026-08-14",
-      score: 2.5,
-      stage: "梁圣",
-      voterCount: 4,
-    });
+    expect(body.map((item) => item.date)).toEqual([
+      "2026-01-03",
+      "2026-01-04",
+      "2026-01-05",
+    ]);
   });
 
-  it("rejects malformed day dates and returns 404 for a missing day", async () => {
-    const request = new Request("https://api.example.com/api/timeline/day");
+  it("ignores malformed from/to filters", async () => {
+    insertSnapshot("2026-01-01", 1, 1);
+    insertSnapshot("2026-01-02", 2, 2);
 
-    await expect(handleGetTimelineDay(request, env, "14-08-2026"))
-      .resolves.toMatchObject({ status: 400 });
-    await expect(handleGetTimelineDay(request, env, "2026-08-14"))
-      .resolves.toMatchObject({ status: 404 });
+    const response = await handleGetTimeline(
+      new Request("https://api.example.com/api/timeline?from=not-a-date&to=bad"),
+      env,
+    );
+    const body = await response.json() as Array<Record<string, unknown>>;
+
+    expect(body).toHaveLength(2);
   });
 });
 

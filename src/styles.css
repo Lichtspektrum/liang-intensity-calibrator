@@ -679,13 +679,6 @@ h1 {
   transition: all 200ms ease;
 }
 
-.timeline-node--major .timeline-node-dot {
-  width: 12px;
-  height: 12px;
-  background: var(--accent);
-  border-color: var(--accent);
-}
-
 .timeline-node:hover .timeline-node-dot {
   width: 14px;
   height: 14px;
@@ -694,13 +687,25 @@ h1 {
 .timeline-node-label {
   position: absolute;
   right: 12px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 1px;
   font-family: "SFMono-Regular", Consolas, monospace;
-  font-size: 7px;
-  color: var(--muted);
   white-space: nowrap;
   opacity: 0;
   transition: opacity 200ms ease;
   pointer-events: none;
+}
+
+.timeline-node-date {
+  font-size: 8px;
+  color: var(--ink);
+}
+
+.timeline-node-stats {
+  font-size: 7px;
+  color: var(--muted);
 }
 
 .timeline-node:hover .timeline-node-label {

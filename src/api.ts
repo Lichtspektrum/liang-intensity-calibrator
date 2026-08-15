@@ -13,14 +13,6 @@ export interface ScoreData {
   negativePoints: number;
 }
 
-export interface TimelineEventData {
-  id: number;
-  date: string;
-  title: string;
-  summary: string | null;
-  isMajor: boolean;
-}
-
 export interface TimelineDayData {
   date: string;
   score: number;

@@ -4,7 +4,7 @@ import "number-flow";
 
 import { type AppController, mountApp } from "./app";
 import { createApiClient, type ScoreData, type TimelineDayData } from "./api";
-import { MAX_SCORE, MIN_SCORE } from "./score-domain";
+import { MAX_SCORE, MIN_SCORE, describeScore } from "./score-domain";
 import {
   createVideoRenderer,
   getPosterPath,
@@ -68,6 +68,8 @@ let controller: AppController | null = null;
 let renderer: VideoRenderer | null = null;
 let fingerprintPromise: Promise<string> | null = null;
 let lastCommunityScore = 0;
+let lastCommunityVoters = 0;
+let communityLoaded = false;
 let communityRevision = 0;
 let cooldownTimeout: ReturnType<typeof setTimeout> | null = null;
 let cooldownDeadline: number | null = null;
@@ -75,7 +77,9 @@ let cooldownGeneration = 0;
 let activeVote: StoredVote | null = null;
 let observedVoteStorageValue: string | null = null;
 let voteInFlight = false;
-const timelineByDate = new Map<string, TimelineDayData>();
+let timelineDays: TimelineDayData[] = [];
+let timelineLoadedThrough = "";
+let timelineRefreshTimer: ReturnType<typeof setTimeout> | null = null;
 
 const requestDraw = (score: number): void => {
   renderer?.render(score);
@@ -84,9 +88,30 @@ const requestDraw = (score: number): void => {
 controller = mountApp(app, requestDraw, poster);
 renderer = createVideoRenderer(controller.canvas, import.meta.env.BASE_URL);
 
+function beijingToday(now = Date.now()): string {
+  return new Date(now + 8 * 60 * 60 * 1_000).toISOString().slice(0, 10);
+}
+
+function renderTimeline(): void {
+  const today = beijingToday();
+  const days: TimelineDayData[] = timelineDays.filter((day) => day.date !== today);
+  if (communityLoaded) {
+    days.push({
+      date: today,
+      score: lastCommunityScore,
+      stage: describeScore(lastCommunityScore).stage,
+      voterCount: lastCommunityVoters,
+    });
+  }
+  controller?.setTimelineEvents(days);
+}
+
 function applyCommunityScore(score: ScoreData): void {
   lastCommunityScore = score.score;
+  lastCommunityVoters = score.voterCount;
+  communityLoaded = true;
   controller?.setCommunityScore(score);
+  renderTimeline();
 }
 
 function applyVoteCommunityScore(score: ScoreData): void {
@@ -222,7 +247,7 @@ controller.onVote = async (position: number) => {
 };
 
 controller.onHistorySelect = (date: string) => {
-  const day = timelineByDate.get(date);
+  const day = timelineDays.find((entry) => entry.date === date);
   if (day) controller?.enterHistoryMode(date, day.score);
 };
 
@@ -288,18 +313,34 @@ async function loadCommunity(): Promise<void> {
 
   try {
     const days = await api.fetchTimeline();
-    timelineByDate.clear();
-    days.forEach((day) => timelineByDate.set(day.date, day));
-    controller.setTimelineEvents(days.map((day, id) => ({
-      id,
-      date: day.date,
-      title: `${day.stage} · ${day.voterCount} 人`,
-      summary: null,
-      isMajor: false,
-    })));
+    timelineDays = days;
+    timelineLoadedThrough = days.at(-1)?.date ?? "";
+    renderTimeline();
   } catch {
     // 时间线缺失不影响社区分数和滑杆。
   }
+}
+
+async function refreshTimeline(): Promise<void> {
+  if (!api.configured) return;
+  try {
+    const days = await api.fetchTimeline(timelineLoadedThrough || undefined);
+    const merged = new Map(timelineDays.map((day) => [day.date, day]));
+    days.forEach((day) => merged.set(day.date, day));
+    timelineDays = [...merged.values()];
+    timelineLoadedThrough = timelineDays.at(-1)?.date ?? timelineLoadedThrough;
+    renderTimeline();
+  } catch {
+    // 增量刷新失败时保留现有时间线。
+  }
+}
+
+function scheduleTimelineRefresh(): void {
+  if (timelineRefreshTimer !== null) return;
+  timelineRefreshTimer = setTimeout(() => {
+    timelineRefreshTimer = null;
+    void refreshTimeline();
+  }, 800);
 }
 
 function bootstrap(): void {
@@ -322,7 +363,13 @@ window.addEventListener("resize", () => {
   renderer?.redraw();
 });
 
-window.addEventListener("focus", recalibrateCooldown);
+window.addEventListener("focus", () => {
+  recalibrateCooldown();
+  scheduleTimelineRefresh();
+});
 document.addEventListener("visibilitychange", () => {
-  if (document.visibilityState === "visible") recalibrateCooldown();
+  if (document.visibilityState === "visible") {
+    recalibrateCooldown();
+    scheduleTimelineRefresh();
+  }
 });

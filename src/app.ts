@@ -1,6 +1,6 @@
 import NumberFlow from "number-flow";
 
-import type { ScoreData, TimelineEventData } from "./api";
+import type { ScoreData, TimelineDayData } from "./api";
 import {
   MAX_SCORE,
   MIN_SCORE,
@@ -38,7 +38,7 @@ export interface AppController {
     positivePoints: number;
     negativePoints: number;
   }): void;
-  setTimelineEvents(events: TimelineEventData[]): void;
+  setTimelineEvents(days: TimelineDayData[]): void;
   enterHistoryMode(date: string, score: number): void;
   exitHistoryMode(): void;
   onVote?: (position: number) => void;
@@ -466,22 +466,30 @@ export function mountApp(
       voteCountDown.setAttribute("aria-label", `低强度投票人数 ${state.negativeCount}`);
       renderVoteStatus();
     },
-    setTimelineEvents(events) {
-      const nodes = events.map((event) => {
+    setTimelineEvents(days) {
+      const nodes = days.map((day) => {
         const node = document.createElement("button");
-        node.className = `timeline-node timeline-node--${event.isMajor ? "major" : "minor"}`;
-        node.dataset.date = event.date;
-        node.dataset.title = event.title;
-        node.setAttribute("aria-label", `${event.date}: ${event.title}`);
+        node.className = "timeline-node";
+        node.dataset.date = day.date;
+        node.setAttribute(
+          "aria-label",
+          `${day.date}: ${day.stage} · ${formatStatusScore(day.score)} · ${day.voterCount} 人`,
+        );
 
         const dot = document.createElement("span");
         dot.className = "timeline-node-dot";
         const label = document.createElement("span");
         label.className = "timeline-node-label";
-        label.textContent = event.date.slice(5);
+        const dateLine = document.createElement("span");
+        dateLine.className = "timeline-node-date";
+        dateLine.textContent = day.date.slice(5);
+        const statsLine = document.createElement("span");
+        statsLine.className = "timeline-node-stats";
+        statsLine.textContent = `${formatStatusScore(day.score)} · ${day.voterCount} 人`;
+        label.append(dateLine, statsLine);
         node.append(dot, label);
         node.addEventListener("click", () => {
-          controller.onHistorySelect?.(event.date);
+          controller.onHistorySelect?.(day.date);
         });
         return node;
       });

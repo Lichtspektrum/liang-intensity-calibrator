@@ -107,6 +107,45 @@ describe("static Pages bootstrap", () => {
     vi.useRealTimers();
   });
 
+  it("页面重新可见时增量刷新时间线并合并去重", async () => {
+    mocks.configured = true;
+    mocks.fetchScore.mockResolvedValue({
+      score: 2.5, stage: "梁圣", voterCount: 4, todayVoterCount: 2,
+      positiveCount: 3, negativeCount: 1, neutralCount: 0,
+      positivePoints: 13, negativePoints: -3,
+    });
+    mocks.fetchTimeline.mockImplementation(async (from?: string) => {
+      if (!from) return [
+        { date: "2026-08-12", score: 2.5, stage: "梁圣", voterCount: 4 },
+      ];
+      return [
+        { date: "2026-08-12", score: 2.5, stage: "梁圣", voterCount: 4 },
+        { date: "2026-08-13", score: 3, stage: "梁圣", voterCount: 5 },
+      ];
+    });
+
+    await import("./main");
+    await vi.waitFor(() =>
+      expect(mocks.controller.setTimelineEvents).toHaveBeenCalled(),
+    );
+
+    const today = new Date(Date.now() + 8 * 60 * 60 * 1_000).toISOString().slice(0, 10);
+    const initial = mocks.controller.setTimelineEvents.mock.calls.at(-1)?.[0] as TimelineDayData[];
+    expect(initial.map((day) => day.date)).toEqual(["2026-08-12", today]);
+    expect(initial.at(-1)).toMatchObject({ score: 2.5, voterCount: 4 });
+
+    window.dispatchEvent(new Event("focus"));
+    await vi.waitFor(() => expect(mocks.fetchTimeline).toHaveBeenCalledWith("2026-08-12"));
+    await vi.waitFor(() => {
+      const last = mocks.controller.setTimelineEvents.mock.calls.at(-1)?.[0] as TimelineDayData[];
+      return last?.some((day) => day.date === "2026-08-13");
+    });
+
+    const merged = mocks.controller.setTimelineEvents.mock.calls.at(-1)?.[0] as TimelineDayData[];
+    expect(merged.map((day) => day.date)).toEqual(["2026-08-12", "2026-08-13", today]);
+  });
+
+
   it("无需 SSR 状态即可挂载，并在 API 不可用时继续加载视频", async () => {
     await import("./main");
     await vi.waitFor(() => expect(mocks.controller.setReady).toHaveBeenCalledOnce());
@@ -162,9 +201,11 @@ describe("static Pages bootstrap", () => {
 
     await import("./main");
     await vi.waitFor(() => expect(mocks.controller.setCommunityScore).toHaveBeenCalledWith(score));
-    expect(mocks.controller.setTimelineEvents).toHaveBeenCalledWith([
-      expect.objectContaining({ date: "2026-08-13", title: "梁圣 · 4 人" }),
-    ]);
+    expect(mocks.controller.setTimelineEvents).toHaveBeenCalledWith(
+      expect.arrayContaining([
+        expect.objectContaining({ date: "2026-08-13", score: 2.5, stage: "梁圣", voterCount: 4 }),
+      ]),
+    );
     expect(mocks.controller.setReady).not.toHaveBeenCalled();
 
     releasePoster();

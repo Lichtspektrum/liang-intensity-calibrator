@@ -172,11 +172,11 @@ describe("deployment documentation and retired infrastructure", () => {
     expect(wayfinderMap).not.toMatch(/Workers AI|Worker \+ Assets|\bKV\b|新闻采集|每日一票/);
   });
 
-  it("documents safe secret generation, least scope and failure behavior", () => {
-    expect(readme).toContain("openssl rand -hex 32");
-    expect(readme).toMatch(/Workers Scripts[^\n]*Edit/);
-    expect(readme).toMatch(/D1[^\n]*Edit/);
-    expect(readme).toMatch(/缺少[^\n]*(secret|variable)[^\n]*失败/i);
-    expect(readme).toMatch(/已成功应用[^\n]*migration[^\n]*保留/);
+  it("keeps the README user-facing without install or deploy details", () => {
+    expect(readme).toContain("[在线体验]");
+    expect(readme).toContain("## 项目结构");
+    expect(readme).toContain("coding agent");
+    expect(readme).toContain("## 素材与致谢");
+    expect(readme).not.toMatch(/npm install|openssl rand|wrangler login|CLOUDFLARE_API_TOKEN/);
   });
 });
