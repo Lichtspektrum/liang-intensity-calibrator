@@ -115,6 +115,14 @@ export function createVideoRenderer(
   let pendingTargetTime: number | null = null;
   let seekInFlight = false;
 
+  // 拖拽 / 状态跳转时，seek 到位后从上一帧向目标帧做短交叉淡入，
+  // 使快速拖动也能看到连续平滑的形态转换（seek 间隔内不出现硬跳帧）。
+  const FADE_MS = 60;
+  let fadeRaf = 0;
+  let fadeStartedAt = 0;
+  const prevFrame = document.createElement("canvas");
+  const prevFrameCtx = prevFrame.getContext("2d")!;
+
   const drawVideo = (): void => {
     if (videoReady && video.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA) {
       drawSource(canvas, video);
@@ -122,15 +130,39 @@ export function createVideoRenderer(
     }
   };
 
-  const drawDecodedFrame = (): void => {
-    drawVideo();
-    if (typeof video.requestVideoFrameCallback === "function") {
-      video.requestVideoFrameCallback(() => {
-        if (!seekInFlight && pendingTargetTime === null) {
-          drawVideo();
-        }
-      });
-    }
+  const capturePrevFrame = (): void => {
+    prevFrame.width = canvas.width;
+    prevFrame.height = canvas.height;
+    prevFrameCtx.drawImage(canvas, 0, 0);
+  };
+
+  const drawBlended = (alpha: number): void => {
+    const context = getCanvasContext(canvas);
+    context.clearRect(0, 0, canvas.width, canvas.height);
+    context.imageSmoothingEnabled = true;
+    context.imageSmoothingQuality = "high";
+    context.globalAlpha = 1;
+    context.drawImage(prevFrame, 0, 0, canvas.width, canvas.height);
+    context.globalAlpha = alpha;
+    context.drawImage(video, 0, 0, canvas.width, canvas.height);
+    context.globalAlpha = 1;
+  };
+
+  const showSeekedFrame = (): void => {
+    if (fadeRaf) cancelAnimationFrame(fadeRaf);
+    capturePrevFrame();
+    fadeStartedAt = performance.now();
+    const tick = (now: number): void => {
+      const progress = Math.min(1, (now - fadeStartedAt) / FADE_MS);
+      drawBlended(progress);
+      if (progress >= 1) {
+        fadeRaf = 0;
+        drawVideo();
+        return;
+      }
+      fadeRaf = requestAnimationFrame(tick);
+    };
+    fadeRaf = requestAnimationFrame(tick);
   };
 
   const scheduleLatestSeek = (): void => {
@@ -147,7 +179,7 @@ export function createVideoRenderer(
 
       if (Math.abs(video.currentTime - pendingTargetTime) < 0.001) {
         pendingTargetTime = null;
-        drawDecodedFrame();
+        showSeekedFrame();
         return;
       }
 
@@ -163,7 +195,7 @@ export function createVideoRenderer(
       Math.abs(video.currentTime - pendingTargetTime) < 0.001
     ) {
       pendingTargetTime = null;
-      drawDecodedFrame();
+      showSeekedFrame();
       return;
     }
     scheduleLatestSeek();

@@ -1,9 +1,9 @@
-# Commit Messages
+# 提交信息
 
-Use a Conventional Commit subject line only, for example:
+只写 Conventional Commit 的 subject 行，例如：
 
 ```text
 fix(score): remove news-driven score changes
 ```
 
-Do not add commit bodies, trailers, or co-author attribution unless the user explicitly requests them.
+除非用户明确要求，不加提交正文、trailer 或共同作者署名。

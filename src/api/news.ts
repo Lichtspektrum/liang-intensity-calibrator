@@ -68,7 +68,7 @@ export async function refreshNewsCalibration(
     progress: 10,
     stage: "direct",
     label: "直连可信源",
-    detail: "并行读取 Hacker News、arXiv 与 5 个官方 GitHub release 源",
+    detail: "并行读取 Hacker News、arXiv 与 GitHub 搜索（当天新建的 DeepSeek/AI 仓库）",
   });
   const directItems = await collectTodaysAiNews(date, now, (source) => {
     report({

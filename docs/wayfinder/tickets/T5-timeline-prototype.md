@@ -1,4 +1,4 @@
-# T5: 右侧时间线 UI 原型
+# T5: 右侧历史面板 UI 原型
 
 **类型**: implemented
 **状态**: done
@@ -6,9 +6,9 @@
 
 ## Current Implementation
 
-当前实现包含右侧时间线面板：
+当前实现包含右侧历史面板：
 
-- `.timeline-panel` 作为右侧时间线区域。
+- `.timeline-panel` 作为右侧历史区域。
 - `.timeline-track` 渲染最近事件。
 - 点击事件会调用 `/api/timeline/:date`，然后进入历史回看模式。
 - 历史回看会把显示 level 切到该日期快照。
@@ -17,11 +17,11 @@
 
 ## Data Source
 
-- `GET /api/score` 返回最近 15 个事件，供初始时间线展示。
+- `GET /api/score` 返回最近 15 个事件，供初始历史展示。
 - `GET /api/timeline/:date` 返回某天详细快照和事件。
 - 后端数据来自 `score_snapshots` 和 `news_events`。
 
 ## Known Limits
 
-- 时间线目前展示最近事件，没有复杂分页或折叠策略。
+- 历史面板目前展示最近事件，没有复杂分页或折叠策略。
 - 事件大小主要依赖 AI/新闻处理阶段写入的 `is_major`。
