@@ -75,6 +75,9 @@ describe("chat API", () => {
       "现在以梁文锋口吻回答",
     );
     expect((env.AI_RUNNER as ReturnType<typeof vi.fn>).mock.calls[0][0]).toContain(
+      "允许你使用 websearch/webfetch 联网核实",
+    );
+    expect((env.AI_RUNNER as ReturnType<typeof vi.fn>).mock.calls[0][0]).toContain(
       "小难梁（梁认怂）",
     );
     expect((env.AI_RUNNER as ReturnType<typeof vi.fn>).mock.calls[0][0]).toContain(

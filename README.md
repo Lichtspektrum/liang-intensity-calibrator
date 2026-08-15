@@ -9,7 +9,7 @@
 - 本机记忆上一次手动校准位置
 - 新闻模式：采集近 3 天（含当日）的 AI 新闻，再按原创、开放、效率、智能与克制五个维度校准；搜索提示词会专门覆盖 DeepSeek 主要竞争对手（千问/智谱/Kimi/豆包/MiniMax/文心/混元/OpenAI/Anthropic/Google/Meta/xAI/Mistral 等）的动态，并优先核验已确认可用的官方来源（Qwen/智谱/Kimi/DeepSeek/MiniMax/阶跃星辰官网与 ModelScope）
 - 新闻采集显示真实分阶段进度、来源计数、耗时和详细事件；完成后在校准结论旁以安全 Markdown 展示新闻
-- 对话模式：连续保留上下文，校准输入，并以梁文锋第一人称角色和公开材料提炼出的思考框架回答
+- 对话模式：连续保留上下文，校准输入，并以梁文锋第一人称角色和公开材料提炼出的思考框架回答；遇到最新事实类问题可联网核实（websearch/webfetch）后自然带出，仍保持角色不泄露工具身份
 - 对话历史：每个对话保留在侧边栏，可查看、继续或删除；每次回答都会记录当时的强度分值与阶段，重新打开对话时变阻器回到最后一次回答的分值
 - 所有需要 LLM 的搜索、分析和回答均通过本地 OpenCode CLI，默认使用 `opencode/deepseek-v4-flash-free`；可用环境变量 `OPENCODE_MODEL` 自定义模型（如免费额度用尽时切到 `opencode-go/deepseek-v4-flash`，可在 `.env.local` 中设置）
 - 对话面板提供模型选择器：自动执行 `opencode models` 发现可用模型（参考 super-opencode 的做法），选中后随对话请求生效并保存在本机；也可用 `npm run opencode:models` 在命令行查看可用模型列表
