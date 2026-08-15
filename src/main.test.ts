@@ -33,6 +33,8 @@ const mocks = vi.hoisted(() => {
     setActiveConversationId: vi.fn(),
     setChatThread: vi.fn(),
     clearChatThread: vi.fn(),
+    setOpenCodeModels: vi.fn(),
+    setSelectedModel: vi.fn(),
     onVote: undefined as ((position: number) => void) | undefined,
     onHistorySelect: undefined as ((date: string) => void) | undefined,
     onHistoryExit: undefined as (() => void) | undefined,
@@ -42,6 +44,7 @@ const mocks = vi.hoisted(() => {
     onConversationSelect: undefined as ((id: string) => void) | undefined,
     onConversationDelete: undefined as ((id: string) => void) | undefined,
     onNewConversation: undefined as (() => void) | undefined,
+    onModelChange: undefined as ((model: string) => void) | undefined,
   };
   return {
     controller,
@@ -84,6 +87,11 @@ vi.mock("./api", async (importOriginal) => {
       fetchConversations: vi.fn(async () => []),
       fetchConversation: vi.fn(),
       deleteConversation: vi.fn(),
+      fetchOpenCodeModels: vi.fn(async () => ({
+        models: [],
+        active: "opencode/deepseek-v4-flash-free",
+        activeInList: true,
+      })),
     })),
   };
 });

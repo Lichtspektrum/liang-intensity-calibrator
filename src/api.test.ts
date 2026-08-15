@@ -347,4 +347,33 @@ describe("createApiClient", () => {
 
     await expect(client.chat("你好")).rejects.toThrow("Invalid chat response");
   });
+
+  it("把选中的模型随对话请求发送", async () => {
+    const chatBody = {
+      score: 6,
+      stage: "梁圣",
+      answer: "答",
+      calibrationSummary: "总",
+      dimensions: { originality: 0, openness: 0, efficiency: 0, intelligence: 0, restraint: 0 },
+      disclaimer: "d",
+      conversation: { id: "00000000-0000-4000-8000-000000000001", title: "t" },
+    };
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify(chatBody)));
+    vi.stubGlobal("fetch", fetchMock);
+    const client = createApiClient("https://liang-api.example.com");
+
+    await client.chat("你好", undefined, undefined, "opencode-go/deepseek-v4-flash");
+    const body = JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body));
+    expect(body).toEqual({ message: "你好", model: "opencode-go/deepseek-v4-flash" });
+  });
+
+  it("读取自动发现的 opencode 模型列表", async () => {
+    const body = { models: ["a", "b"], active: "a", activeInList: true };
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify(body)));
+    vi.stubGlobal("fetch", fetchMock);
+    const client = createApiClient("https://liang-api.example.com");
+
+    await expect(client.fetchOpenCodeModels()).resolves.toEqual(body);
+    expect(fetchMock.mock.calls[0]?.[0]).toBe("https://liang-api.example.com/api/opencode-models");
+  });
 });

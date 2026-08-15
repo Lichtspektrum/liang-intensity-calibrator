@@ -264,6 +264,19 @@ export async function installApiRoutes(
       return;
     }
 
+    if (pathname === "/api/opencode-models" && request.method() === "GET") {
+      await route.fulfill({
+        headers: corsHeaders,
+        contentType: "application/json",
+        body: JSON.stringify({
+          models: ["opencode/deepseek-v4-flash-free", "opencode-go/deepseek-v4-flash"],
+          active: "opencode/deepseek-v4-flash-free",
+          activeInList: true,
+        }),
+      });
+      return;
+    }
+
     if (pathname === "/api/mode-positions" && request.method() === "GET") {
       log.modePositionRequests.push(request);
       await route.fulfill({

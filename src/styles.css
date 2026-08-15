@@ -967,9 +967,40 @@ h1 {
 
 .chat-main {
   display: grid;
-  grid-template-rows: minmax(0, 1fr) auto auto;
+  grid-template-rows: minmax(0, 1fr) auto auto auto;
   gap: 8px;
   min-height: 0;
+}
+
+.chat-model-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.chat-model-label {
+  color: var(--muted);
+  font-family: "SFMono-Regular", Consolas, monospace;
+  font-size: 9px;
+  letter-spacing: 0.08em;
+}
+
+.chat-model-select {
+  min-width: 0;
+  flex: 1;
+  max-width: 260px;
+  padding: 4px 6px;
+  border: 1px solid color-mix(in srgb, currentColor 24%, transparent);
+  border-radius: 0;
+  color: currentColor;
+  background: color-mix(in srgb, var(--thumb-bg) 70%, transparent);
+  font: inherit;
+  font-size: 10px;
+}
+
+.chat-model-select:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
 }
 
 .chat-sidebar {

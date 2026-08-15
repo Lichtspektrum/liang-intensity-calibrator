@@ -12,6 +12,7 @@ import {
 
 const MANUAL_STORAGE_KEY = "liang-slider:manual-position:v1";
 const CHAT_ACTIVE_STORAGE_KEY = "liang-slider:active-chat:v1";
+const CHAT_MODEL_STORAGE_KEY = "liang-slider:chat-model:v1";
 
 interface StoredVote {
   position: number;
@@ -67,6 +68,7 @@ let appMode: AppMode = "manual";
 let chatTransitionGeneration = 0;
 let activeConversationId: string | null = null;
 let pendingConversationId: string | null = null;
+let chatModel: string | null = null;
 const modePositions: ModePositionsData = { news: null, chat: null };
 const timelineByDate = new Map<string, TimelineDayData>();
 
@@ -194,7 +196,7 @@ controller.onChatSubmit = async (message: string) => {
   chatInFlight = true;
   controller.setChatLoading(message);
   try {
-    const result = await api.chat(message, undefined, conversationId);
+    const result = await api.chat(message, undefined, conversationId, chatModel ?? undefined);
     pendingConversationId = null;
     if (activeConversationId !== null && activeConversationId !== submittedFor) {
       // 回答期间用户已切换到另一段历史对话：仍已持久化，只刷新列表。
@@ -305,6 +307,30 @@ controller.onNewConversation = () => {
   startNewConversation();
 };
 
+// 自动发现 opencode 可用模型（参考 super-opencode：`opencode models` → 下拉选择）。
+async function loadOpenCodeModels(): Promise<void> {
+  if (!controller || !api.configured) return;
+  try {
+    const { models, active } = await api.fetchOpenCodeModels();
+    controller.setOpenCodeModels(models, active);
+    const saved = localStorage.getItem(CHAT_MODEL_STORAGE_KEY);
+    if (saved && models.includes(saved)) {
+      chatModel = saved;
+      controller.setSelectedModel(saved);
+    } else {
+      chatModel = null;
+      controller.setSelectedModel(active);
+    }
+  } catch {
+    // 模型列表不可用时静默降级，使用服务端默认模型。
+  }
+}
+
+controller.onModelChange = (model: string) => {
+  chatModel = model;
+  localStorage.setItem(CHAT_MODEL_STORAGE_KEY, model);
+};
+
 async function animateChatScore(
   from: number,
   to: number,
@@ -413,6 +439,7 @@ function bootstrap(): void {
   void loadMedia();
   void loadCommunity();
   void loadConversations();
+  void loadOpenCodeModels();
 }
 
 bootstrap();

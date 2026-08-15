@@ -53,6 +53,8 @@ export interface AppController {
   setActiveConversationId(id: string | null): void;
   setChatThread(messages: ConversationMessageData[]): void;
   clearChatThread(): void;
+  setOpenCodeModels(models: string[], active: string): void;
+  setSelectedModel(model: string): void;
   enterHistoryMode(date: string, score: number): void;
   exitHistoryMode(): void;
   onVote?: (position: number) => void;
@@ -65,6 +67,7 @@ export interface AppController {
   onConversationSelect?: (id: string) => void;
   onConversationDelete?: (id: string) => void;
   onNewConversation?: () => void;
+  onModelChange?: (model: string) => void;
 }
 
 export type AppMode = "manual" | "news" | "chat";
@@ -270,10 +273,14 @@ export function mountApp(
                 <div class="chat-thread" role="log" aria-label="连续梁式对话" aria-live="polite">
                   <p class="chat-empty">历史对话会保留在左侧列表，每次回答都会记录当时的强度分值。</p>
                 </div>
+                <label class="chat-model-row">
+                  <span class="chat-model-label">模型</span>
+                  <select class="chat-model-select" aria-label="选择 opencode 模型"></select>
+                </label>
                 <p class="chat-status" role="status" aria-live="polite"></p>
                 <form class="chat-form">
                   <textarea id="chat-input" maxlength="2000" rows="3" placeholder="例如：我们应该先追求用户规模，还是继续投入底层模型？ Enter 发送，Shift+Enter 换行" required></textarea>
-                  <p class="chat-privacy">由本项目 npm 安装的 OpenCode CLI 免费模型处理，无需模型 key。免费期内输入可能被用于改进模型，请勿提交隐私或机密信息。</p>
+                  <p class="chat-privacy">由本项目 npm 安装的 OpenCode CLI 处理。免费额度用尽时可切换模型（列表自动来自 opencode models 命令）。</p>
                   <button class="chat-submit-btn" type="submit" aria-label="发送">
                     <svg class="chat-submit-icon chat-submit-icon--send" viewBox="0 0 24 24" aria-hidden="true">
                       <path d="M5 19 19 5M19 5H8.5M19 5v10.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
@@ -347,6 +354,7 @@ export function mountApp(
   const chatNewButton = root.querySelector<HTMLButtonElement>(".chat-new-btn")!;
   const chatConversations = root.querySelector<HTMLOListElement>(".chat-conversations")!;
   const chatSidebarEmpty = root.querySelector<HTMLElement>(".chat-sidebar-empty")!;
+  const chatModelSelect = root.querySelector<HTMLSelectElement>(".chat-model-select")!;
 
   let previewPosition = 0;
   let displayPosition = 0;
@@ -474,6 +482,11 @@ export function mountApp(
   chatNewButton.addEventListener("click", () => {
     const controller = (root as HTMLElement & { _controller?: AppController })._controller;
     controller?.onNewConversation?.();
+  });
+
+  chatModelSelect.addEventListener("change", () => {
+    const controller = (root as HTMLElement & { _controller?: AppController })._controller;
+    controller?.onModelChange?.(chatModelSelect.value);
   });
 
   const appendAssistantTurn = (
@@ -782,6 +795,33 @@ export function mountApp(
       empty.className = "chat-empty";
       empty.textContent = "新对话会保留在左侧列表，每次回答都会记录当时的强度分值。";
       chatThread.append(empty);
+    },
+    setOpenCodeModels(models, active) {
+      chatModelSelect.replaceChildren();
+      if (models.length === 0) {
+        // 自动发现失败：退化为只展示当前生效模型（禁用选择）。
+        const option = document.createElement("option");
+        option.value = active;
+        option.textContent = active;
+        chatModelSelect.append(option);
+        chatModelSelect.disabled = true;
+        return;
+      }
+      chatModelSelect.disabled = false;
+      for (const model of models) {
+        const option = document.createElement("option");
+        option.value = model;
+        option.textContent = model;
+        chatModelSelect.append(option);
+      }
+      if (!models.includes(chatModelSelect.value)) {
+        chatModelSelect.value = models.includes(active) ? active : models[0]!;
+      }
+    },
+    setSelectedModel(model) {
+      if (chatModelSelect.disabled) return;
+      const exists = Array.from(chatModelSelect.options).some((option) => option.value === model);
+      if (exists) chatModelSelect.value = model;
     },
     enterHistoryMode(date, score) {
       currentMode = "viewing-history";

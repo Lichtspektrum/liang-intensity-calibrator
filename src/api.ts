@@ -129,6 +129,12 @@ export interface ConversationData {
   messages: ConversationMessageData[];
 }
 
+export interface OpenCodeModelsData {
+  models: string[];
+  active: string;
+  activeInList: boolean;
+}
+
 export interface ModePositionsData {
   news: number | null;
   chat: number | null;
@@ -175,10 +181,12 @@ export interface ApiClient {
     message: string,
     history?: readonly ChatTurnData[],
     conversationId?: string,
+    model?: string,
   ): Promise<ChatData>;
   fetchConversations(): Promise<ConversationSummaryData[]>;
   fetchConversation(id: string): Promise<ConversationData>;
   deleteConversation(id: string): Promise<void>;
+  fetchOpenCodeModels(): Promise<OpenCodeModelsData>;
   fetchModePositions(): Promise<ModePositionsData>;
   saveModePositions(positions: ModePositionsData): Promise<void>;
 }
@@ -426,6 +434,14 @@ function isConversationData(value: unknown): value is ConversationData {
     && value.messages.every(isConversationMessageData);
 }
 
+function isOpenCodeModelsData(value: unknown): value is OpenCodeModelsData {
+  return isRecord(value)
+    && Array.isArray(value.models)
+    && value.models.every((model): model is string => typeof model === "string" && model.length > 0)
+    && typeof value.active === "string"
+    && typeof value.activeInList === "boolean";
+}
+
 function isChatData(value: unknown): value is ChatData {
   return isRecord(value)
     && isValidScoreAndStage(value)
@@ -511,6 +527,7 @@ export function createApiClient(baseUrl: string | undefined): ApiClient {
       fetchConversations: unavailable,
       fetchConversation: unavailable,
       deleteConversation: unavailable,
+      fetchOpenCodeModels: unavailable,
       fetchModePositions: unavailable,
       saveModePositions: unavailable,
     };
@@ -583,13 +600,20 @@ export function createApiClient(baseUrl: string | undefined): ApiClient {
       if (!isNewsJob(result)) throw new Error("Invalid news job response");
       return result;
     },
-    async chat(message, history = [], conversationId) {
+    async chat(message, history = [], conversationId, model) {
       const payload: Record<string, unknown> = { message };
       if (conversationId !== undefined) {
         if (!isConversationId(conversationId)) throw new Error("Invalid conversation id");
         payload.conversationId = conversationId;
       } else if (history.length > 0) {
         payload.history = history;
+      }
+      if (model !== undefined) {
+        const normalizedModel = model.trim();
+        if (!normalizedModel || normalizedModel.length > 120) {
+          throw new Error("Invalid model");
+        }
+        payload.model = normalizedModel;
       }
       const response = await fetch(`${base}/api/chat`, {
         method: "POST",
@@ -622,6 +646,11 @@ export function createApiClient(baseUrl: string | undefined): ApiClient {
       if (!response.ok && response.status !== 404) {
         throw new Error(`API error: ${response.status}`);
       }
+    },
+    async fetchOpenCodeModels() {
+      const result = await fetchJson<unknown>("/api/opencode-models");
+      if (!isOpenCodeModelsData(result)) throw new Error("Invalid opencode models response");
+      return result;
     },
     async fetchModePositions() {
       const result = await fetchJson<unknown>("/api/mode-positions");

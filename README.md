@@ -12,6 +12,7 @@
 - 对话模式：连续保留上下文，校准输入，并以梁文锋第一人称角色和公开材料提炼出的思考框架回答
 - 对话历史：每个对话保留在侧边栏，可查看、继续或删除；每次回答都会记录当时的强度分值与阶段，重新打开对话时变阻器回到最后一次回答的分值
 - 所有需要 LLM 的搜索、分析和回答均通过本地 OpenCode CLI，默认使用 `opencode/deepseek-v4-flash-free`；可用环境变量 `OPENCODE_MODEL` 自定义模型（如免费额度用尽时切到 `opencode-go/deepseek-v4-flash`，可在 `.env.local` 中设置）
+- 对话面板提供模型选择器：自动执行 `opencode models` 发现可用模型（参考 super-opencode 的做法），选中后随对话请求生效并保存在本机；也可用 `npm run opencode:models` 在命令行查看可用模型列表
 
 模型不需要 API key。新闻搜索可调用 OpenCode 的 `websearch` 与 `webfetch`，分析和对话可读取项目内提炼的梁文锋 skill。
 

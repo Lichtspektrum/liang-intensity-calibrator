@@ -22,17 +22,88 @@ const RUNTIME_DIR = join(PROJECT_ROOT, "server", "opencode-runtime");
 const STATE_ROOT = join(tmpdir(), "liang-intensity-opencode");
 const MAX_OUTPUT_BYTES = 4 * 1024 * 1024;
 const DEFAULT_TIMEOUT_MS = 120_000;
+const MODELS_TIMEOUT_MS = 15_000;
 
 export interface OpenCodeOptions {
   binary?: string;
   timeoutMs?: number;
   reasoningEffort?: StructuredAiOptions["reasoningEffort"];
   onActivity?: StructuredAiOptions["onActivity"];
+  /** 覆盖环境变量/默认模型，逐请求指定（如前端模型选择器）。 */
+  model?: string;
 }
 
 function defaultBinary(): string {
   const filename = process.platform === "win32" ? "opencode.exe" : "opencode";
   return join(PROJECT_ROOT, "node_modules", "opencode-ai", "bin", filename);
+}
+
+/**
+ * 解析 `opencode models` 输出为模型 id 列表（参考 super-opencode 的做法）：
+ * 跳过空行与 `-`/`ID`/`NAME`/`PROMPT`/`Error` 开头的表头行，取每行第一个 token。
+ */
+export function parseOpenCodeModelsOutput(stdout: string): string[] {
+  const models: string[] = [];
+  for (const line of stdout.split(/\r?\n/u)) {
+    const clean = line.trim();
+    if (!clean) continue;
+    if (/^[-]|^ID\b|^NAME\b|^PROMPT\b|^Error/iu.test(clean)) continue;
+    const name = clean.split(/\s+/u)[0];
+    if (name) models.push(name);
+  }
+  return models;
+}
+
+/**
+ * 自动发现可用 opencode 模型：执行 `opencode models`（15s 超时，失败返回空列表）。
+ * 供 API/前端模型选择器与配置脚本使用。
+ */
+export async function listOpenCodeModels(
+  binary: string = process.env.OPENCODE_BIN ?? defaultBinary(),
+): Promise<string[]> {
+  try {
+    const { stdout } = await runCaptured(binary, ["models"], MODELS_TIMEOUT_MS);
+    return parseOpenCodeModelsOutput(stdout);
+  } catch (error) {
+    console.error(`[opencode-models] ${error instanceof Error ? error.message : String(error)}`);
+    return [];
+  }
+}
+
+interface CapturedOutput {
+  stdout: string;
+  stderr: string;
+}
+
+function runCaptured(binary: string, args: string[], timeoutMs: number): Promise<CapturedOutput> {
+  return new Promise((resolve, reject) => {
+    const child = spawn(binary, args, {
+      windowsHide: true,
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+    let stdout = "";
+    let stderr = "";
+    const timer = setTimeout(() => {
+      child.kill();
+      reject(new Error(`opencode ${args[0]} timed out after ${timeoutMs}ms`));
+    }, timeoutMs);
+    child.stdout.setEncoding("utf8");
+    child.stderr.setEncoding("utf8");
+    child.stdout.on("data", (chunk: string) => { stdout += chunk; });
+    child.stderr.on("data", (chunk: string) => { stderr += chunk; });
+    child.on("error", (error) => {
+      clearTimeout(timer);
+      reject(error);
+    });
+    child.on("close", (code) => {
+      clearTimeout(timer);
+      if (code !== 0) {
+        reject(new Error(`opencode ${args[0]} exited with code ${code}: ${stderr.trim() || stdout.trim()}`));
+        return;
+      }
+      resolve({ stdout, stderr });
+    });
+  });
 }
 
 /**
@@ -203,7 +274,7 @@ export function buildPrompt(payload: StructuredAiPayload): string {
 export function buildOpenCodeArgs(options: OpenCodeOptions = {}): string[] {
   const args = [
     "run", "--pure", "--format", "json",
-    "--model", resolveOpenCodeModel(),
+    "--model", options.model?.trim() || resolveOpenCodeModel(),
     "--dir", RUNTIME_DIR,
   ];
   if (options.reasoningEffort) args.push("--variant", options.reasoningEffort);

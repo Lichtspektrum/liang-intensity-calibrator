@@ -5,6 +5,7 @@ import {
   buildPrompt,
   parseJsonText,
   parseOpenCodeEvents,
+  parseOpenCodeModelsOutput,
   resolveOpenCodeModel,
 } from "./opencode-runner";
 
@@ -77,6 +78,37 @@ describe("OpenCode CLI runner", () => {
     const args = buildOpenCodeArgs({ reasoningEffort: "low" });
     expect(args).toContain("--model");
     expect(args).toContain("opencode-go/deepseek-v4-flash");
+  });
+
+  it("lets a per-request model override the environment", () => {
+    vi.stubEnv("OPENCODE_MODEL", "opencode-go/deepseek-v4-flash");
+    const args = buildOpenCodeArgs({ model: "opencode/deepseek-v4-flash-free" });
+    expect(args).toContain("--model");
+    expect(args).toContain("opencode/deepseek-v4-flash-free");
+  });
+
+  it("parses `opencode models` output into model ids like super-opencode", () => {
+    const output = [
+      "opencode/big-pickle",
+      "opencode/deepseek-v4-flash-free",
+      "opencode-go/deepseek-v4-flash",
+      "opencode-go/deepseek-v4-pro",
+      "deepseek/deepseek-chat",
+      "glm/GLM-4.7-Flash",
+      "nanbeige/nanbeige-4.2-3b",
+      "NAME-IS-NOT-A-MODEL",
+      "",
+      "Error: something went wrong",
+    ].join("\n");
+    expect(parseOpenCodeModelsOutput(output)).toEqual([
+      "opencode/big-pickle",
+      "opencode/deepseek-v4-flash-free",
+      "opencode-go/deepseek-v4-flash",
+      "opencode-go/deepseek-v4-pro",
+      "deepseek/deepseek-chat",
+      "glm/GLM-4.7-Flash",
+      "nanbeige/nanbeige-4.2-3b",
+    ]);
   });
 
   it("permits only the Liang skill and web research tools", async () => {

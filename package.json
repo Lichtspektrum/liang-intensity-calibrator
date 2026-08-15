@@ -11,6 +11,7 @@
     "build": "tsc --noEmit && vite build",
     "build:pages": "tsc --noEmit && vite build --config vite.pages.config.ts --mode github-pages && node scripts/copy-pages-media.mjs",
     "media:posters": "bash scripts/media/build-posters.sh",
+    "opencode:models": "tsx scripts/opencode-models.mts",
     "preview": "vite preview",
     "preview:pages": "vite preview --config vite.pages.config.ts --host 127.0.0.1 --port 5173",
     "test:api": "node tests/api-server.mjs",

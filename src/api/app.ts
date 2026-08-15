@@ -7,6 +7,7 @@ import {
 import { handleGetModePositions, handlePutModePositions } from "./mode-position";
 import { handleGetNews } from "./news";
 import { handleGetNewsJob, handlePostNewsJob } from "./news-jobs";
+import { handleGetOpenCodeModels } from "./opencode-models";
 import { handleGetScore } from "./score";
 import {
   allowedOrigin,
@@ -39,6 +40,9 @@ async function dispatchApi(request: Request, env: Env): Promise<Response> {
   const newsJobMatch = url.pathname.match(/^\/api\/news\/jobs\/([0-9a-f-]+)$/iu);
   if (newsJobMatch && request.method === "GET") return handleGetNewsJob(newsJobMatch[1]);
   if (url.pathname === "/api/chat" && request.method === "POST") return handlePostChat(request, env);
+  if (url.pathname === "/api/opencode-models" && request.method === "GET") {
+    return handleGetOpenCodeModels();
+  }
   if (url.pathname === "/api/conversations" && request.method === "GET") {
     return handleListConversations(env);
   }

@@ -368,4 +368,45 @@ describe("chat API", () => {
     const retrySystem = (env.AI_RUNNER as ReturnType<typeof vi.fn>).mock.calls[1][0] as string;
     expect(retrySystem).toContain("上次输出不符合 schema");
   });
+
+  it("passes a per-request model to the runner", async () => {
+    const statement = {
+      bind: vi.fn().mockReturnThis(),
+      first: vi.fn().mockResolvedValue(null),
+      all: vi.fn(),
+      run: vi.fn().mockResolvedValue({ success: true }),
+    };
+    const env = {
+      DB: { prepare: vi.fn().mockReturnValue(statement) } as unknown as AppDatabase,
+      AI_RUNNER: vi.fn().mockResolvedValue({
+        answer: "先看真正的瓶颈。",
+        calibrationSummary: "偏向主线。",
+        dimensions: { originality: 0.5, openness: 0.2, efficiency: 0.3, intelligence: 0.4, restraint: 0.2 },
+      }),
+      VOTER_HASH_SECRET: "a".repeat(32),
+      ALLOWED_ORIGINS: "https://app.example",
+    };
+
+    const response = await handlePostChat(
+      request({ message: "测试", model: "opencode-go/deepseek-v4-flash" }),
+      env,
+    );
+    expect(response.status).toBe(200);
+    expect(env.AI_RUNNER).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.any(String),
+      expect.any(Object),
+      { reasoningEffort: "low", model: "opencode-go/deepseek-v4-flash" },
+    );
+  });
+
+  it("rejects an oversized model override", async () => {
+    const env = envWithOpenCode({});
+    const response = await handlePostChat(
+      request({ message: "测试", model: "x".repeat(121) }),
+      env,
+    );
+    expect(response.status).toBe(400);
+    expect(env.AI_RUNNER).not.toHaveBeenCalled();
+  });
 });

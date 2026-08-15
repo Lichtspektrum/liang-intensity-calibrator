@@ -532,4 +532,35 @@ describe("liang slider app", () => {
     expect(button.classList.contains("is-loading")).toBe(false);
     expect(button.getAttribute("aria-label")).toBe("发送");
   });
+
+  it("模型选择器展示自动发现的模型并通知变更", () => {
+    const controller = mountApp(root);
+    const changed: string[] = [];
+    controller.onModelChange = (model) => changed.push(model);
+
+    controller.setOpenCodeModels([
+      "opencode/deepseek-v4-flash-free",
+      "opencode-go/deepseek-v4-flash",
+    ], "opencode/deepseek-v4-flash-free");
+    const select = root.querySelector<HTMLSelectElement>(".chat-model-select")!;
+    expect(select.options).toHaveLength(2);
+    expect(select.disabled).toBe(false);
+    expect(select.value).toBe("opencode/deepseek-v4-flash-free");
+
+    controller.setSelectedModel("opencode-go/deepseek-v4-flash");
+    expect(select.value).toBe("opencode-go/deepseek-v4-flash");
+
+    select.value = "opencode/deepseek-v4-flash-free";
+    select.dispatchEvent(new Event("change", { bubbles: true }));
+    expect(changed).toEqual(["opencode/deepseek-v4-flash-free"]);
+  });
+
+  it("模型发现失败时降级为只展示当前生效模型并禁用选择", () => {
+    const controller = mountApp(root);
+    controller.setOpenCodeModels([], "opencode-go/deepseek-v4-flash");
+    const select = root.querySelector<HTMLSelectElement>(".chat-model-select")!;
+    expect(select.disabled).toBe(true);
+    expect(select.value).toBe("opencode-go/deepseek-v4-flash");
+    expect(select.options).toHaveLength(1);
+  });
 });
