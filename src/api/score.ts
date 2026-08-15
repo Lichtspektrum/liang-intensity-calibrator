@@ -2,11 +2,17 @@ import {
   scoreFromBallots,
   scoreToStage,
 } from "../score-engine";
-import { type Env, type ScoreResponse, jsonResponse } from "./shared";
+import {
+  startOfTodayBeijingMs,
+  type Env,
+  type ScoreResponse,
+  jsonResponse,
+} from "./shared";
 
 export interface CommunityScore {
   score: number;
   voterCount: number;
+  todayVoterCount: number;
   positiveCount: number;
   negativeCount: number;
   neutralCount: number;
@@ -17,6 +23,7 @@ export interface CommunityScore {
 interface CommunityAggregateRow {
   voters: number | null;
   score: number | null;
+  today_voters: number | null;
   positive_count: number | null;
   negative_count: number | null;
   neutral_count: number | null;
@@ -30,6 +37,7 @@ export async function getCommunityScore(env: Env): Promise<CommunityScore> {
       `SELECT
   COUNT(*) AS voters,
   AVG(position) AS score,
+  SUM(CASE WHEN updated_at >= ? THEN 1 ELSE 0 END) AS today_voters,
   SUM(CASE WHEN position > 0 THEN 1 ELSE 0 END) AS positive_count,
   SUM(CASE WHEN position < 0 THEN 1 ELSE 0 END) AS negative_count,
   SUM(CASE WHEN position = 0 THEN 1 ELSE 0 END) AS neutral_count,
@@ -37,6 +45,7 @@ export async function getCommunityScore(env: Env): Promise<CommunityScore> {
   SUM(CASE WHEN position < 0 THEN position ELSE 0 END) AS negative_points
 FROM voters`,
     )
+    .bind(startOfTodayBeijingMs())
     .first<CommunityAggregateRow>();
 
   const voterCount = row?.voters ?? 0;
@@ -50,6 +59,7 @@ FROM voters`,
   return {
     score,
     voterCount,
+    todayVoterCount: row?.today_voters ?? 0,
     positiveCount: row?.positive_count ?? 0,
     negativeCount: row?.negative_count ?? 0,
     neutralCount: row?.neutral_count ?? 0,

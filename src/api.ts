@@ -6,6 +6,7 @@ export interface ScoreData {
   score: number;
   stage: string;
   voterCount: number;
+  todayVoterCount: number;
   positiveCount: number;
   negativeCount: number;
   neutralCount: number;
@@ -13,19 +14,20 @@ export interface ScoreData {
   negativePoints: number;
 }
 
+export interface TimelineDayData {
+  date: string;
+  score: number;
+  stage: string;
+  voterCount: number;
+}
+
+/** 时间线面板的渲染事件（本分支保留，供 app.ts 的 setTimelineEvents 使用）。 */
 export interface TimelineEventData {
   id: number;
   date: string;
   title: string;
   summary: string | null;
   isMajor: boolean;
-}
-
-export interface TimelineDayData {
-  date: string;
-  score: number;
-  stage: string;
-  voterCount: number;
 }
 
 export interface NewsItemData {
@@ -254,6 +256,7 @@ function isScoreData(value: unknown): value is ScoreData {
   if (!isRecord(value) || !isValidScoreAndStage(value)) return false;
   const {
     voterCount,
+    todayVoterCount,
     positiveCount,
     negativeCount,
     neutralCount,
@@ -262,10 +265,12 @@ function isScoreData(value: unknown): value is ScoreData {
   } = value;
   if (
     !isNonNegativeSafeInteger(voterCount)
+    || !isNonNegativeSafeInteger(todayVoterCount)
     || !isNonNegativeSafeInteger(positiveCount)
     || !isNonNegativeSafeInteger(negativeCount)
     || !isNonNegativeSafeInteger(neutralCount)
     || positiveCount + negativeCount + neutralCount !== voterCount
+    || todayVoterCount > voterCount
     || !isSafeInteger(positivePoints)
     || !isSafeInteger(negativePoints)
   ) {

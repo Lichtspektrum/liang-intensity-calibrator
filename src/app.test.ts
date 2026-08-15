@@ -113,7 +113,7 @@ describe("liang slider app", () => {
   it("在线基线不会覆盖已经保存的本机位置", () => {
     const controller = mountApp(root);
     const score = {
-      score: 2.5, stage: "梁圣", voterCount: 4,
+      score: 2.5, stage: "梁圣", voterCount: 4, todayVoterCount: 0,
       positiveCount: 3, negativeCount: 1, neutralCount: 0,
       positivePoints: 13, negativePoints: -3,
     };
@@ -140,7 +140,7 @@ describe("liang slider app", () => {
         await firstResponse;
         controller.setUserVotePosition(7);
         controller.setCommunityScore({
-          score: 3, stage: "梁圣", voterCount: 5,
+          score: 3, stage: "梁圣", voterCount: 5, todayVoterCount: 0,
           positiveCount: 4, negativeCount: 1, neutralCount: 0,
           positivePoints: 18, negativePoints: -3,
         });
@@ -180,7 +180,7 @@ describe("liang slider app", () => {
       await voteResponse;
       controller.setUserVotePosition(7);
       controller.setCommunityScore({
-        score: 3, stage: "梁圣", voterCount: 5,
+        score: 3, stage: "梁圣", voterCount: 5, todayVoterCount: 0,
         positiveCount: 4, negativeCount: 1, neutralCount: 0,
         positivePoints: 18, negativePoints: -3,
       });
@@ -255,6 +255,7 @@ describe("liang slider app", () => {
     controller.setCommunityScore({
       score: 7.5,
       stage: "梁圣",
+      todayVoterCount: 0,
       positiveCount: 2,
       negativeCount: 0,
       neutralCount: 0,
@@ -275,6 +276,7 @@ describe("liang slider app", () => {
     controller.setCommunityScore({
       score: 2.4,
       stage: "梁圣",
+      todayVoterCount: 0,
       positiveCount: 2,
       negativeCount: 1,
       neutralCount: 0,
