@@ -1,0 +1,45 @@
+# License
+
+本仓库是 [Lichtspektrum/liang-intensity-calibrator](https://github.com/Lichtspektrum/liang-intensity-calibrator)
+（原项目：手动模式 31 级滑杆）的魔改分支。分支在架构上做了大量改动（本地 Node + SQLite 服务、
+AI 新闻校准、梁式对话、对话历史等），不保证与原项目兼容。
+
+## 原项目代码
+
+继承自上游仓库的代码（手动滑杆、基础渲染等）**未声明许可证**，按默认规则保留所有权利，
+归原作者所有。对该部分代码的复制、修改与再分发需获得上游作者许可。
+
+## 本分支新增代码
+
+本分支新增的代码（AI 新闻采集/校准、梁式对话、对话历史、模型发现、本地 API 服务等）采用
+MIT 许可证：
+
+```
+MIT License
+
+Copyright (c) 2026 the liang-intensity-calibrator fork contributors
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+```
+
+## 素材
+
+人像图片、生成帧与视频素材描绘真实人物，**不属于本仓库所有**，仅用于趣味演示。
+未经权利人许可，不得复用或二次发布。梁文锋人格模拟基于公开材料提炼，不代表梁文锋本人
+或 DeepSeek；文中提及的产品名与商标归各自所有者。

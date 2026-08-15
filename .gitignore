@@ -1,6 +1,8 @@
 .worktrees/
 node_modules/
-.env.local
+.env
+.env.*
+!.env.example
 .data/
 dist/
 dist-pages/
@@ -8,3 +10,8 @@ test-results/
 playwright-report/
 output/video-prototype/*
 !output/video-prototype/.gitkeep
+
+# 个人/本地开发内容归档（不进入公开仓库）
+# 原作者的开发环境与工作流产物：Claude Code 技能、OpenAI 托管配置、
+# wayfinder 工作流票据、根级 opencode 编辑器配置、npm 镜像源设置。
+archive/
