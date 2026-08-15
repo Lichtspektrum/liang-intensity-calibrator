@@ -27,14 +27,6 @@ const AI_KEYWORDS = [
   "mistral", "hugging face", "inference", "multimodal", "reinforcement learning",
 ];
 
-const GITHUB_REPOSITORIES = [
-  "deepseek-ai/DeepSeek-V3",
-  "deepseek-ai/DeepSeek-R1",
-  "huggingface/transformers",
-  "openai/openai-python",
-  "anthropics/anthropic-sdk-python",
-] as const;
-
 export function dateInSingapore(timestamp: string | number): string {
   const value = typeof timestamp === "number" ? timestamp : Date.parse(timestamp);
   if (!Number.isFinite(value)) return "";
@@ -44,6 +36,26 @@ export function dateInSingapore(timestamp: string | number): string {
     month: "2-digit",
     day: "2-digit",
   }).format(new Date(value));
+}
+
+/** 目标日期往前数 days 天的日期（ISO yyyy-mm-dd）。 */
+export function dateBefore(date: string, days: number): string {
+  const millis = Date.parse(`${date}T00:00:00Z`) - days * 86_400_000;
+  return new Date(millis).toISOString().slice(0, 10);
+}
+
+/**
+ * 判断条目的发布日期是否落在目标日期（含）往前 days-1 天（默认共 3 天窗口）内。
+ * 用于把"只收当天"放宽为"近 3 天"。
+ */
+export function withinNewsWindow(
+  publishedAt: string | number,
+  targetDate: string,
+  days = 3,
+): boolean {
+  const itemDate = dateInSingapore(publishedAt);
+  if (!itemDate) return false;
+  return itemDate >= dateBefore(targetDate, days - 1) && itemDate <= targetDate;
 }
 
 export function normalizeTitle(title: string): string {
@@ -90,7 +102,7 @@ export function parseArxivFeed(xml: string, date: string): AiNewsItem[] {
         publishedAt,
       };
     })
-    .filter((item) => item.title && item.url && dateInSingapore(item.publishedAt) === date);
+    .filter((item) => item.title && item.url && withinNewsWindow(item.publishedAt, date));
 }
 
 interface HackerNewsHit {
@@ -103,7 +115,7 @@ interface HackerNewsHit {
 
 export function parseHackerNewsHits(hits: HackerNewsHit[], date: string): AiNewsItem[] {
   return hits
-    .filter((hit) => hit.title && hit.created_at && dateInSingapore(hit.created_at) === date)
+    .filter((hit) => hit.title && hit.created_at && withinNewsWindow(hit.created_at, date))
     .filter((hit) => looksLikeAiNews(hit.title!))
     .map((hit) => ({
       id: `hn:${hit.objectID ?? normalizeTitle(hit.title!)}`,
@@ -116,35 +128,34 @@ export function parseHackerNewsHits(hits: HackerNewsHit[], date: string): AiNews
     }));
 }
 
-interface GithubRelease {
-  id?: number;
-  name?: string | null;
-  tag_name?: string;
-  body?: string | null;
+interface GithubRepoSearchHit {
+  full_name?: string;
   html_url?: string;
-  published_at?: string | null;
+  description?: string | null;
+  created_at?: string;
 }
 
-export function parseGithubReleases(
-  releases: GithubRelease[],
-  repository: string,
-  date: string,
-): AiNewsItem[] {
-  return releases
-    .filter((release) => release.published_at && dateInSingapore(release.published_at) === date)
-    .map((release) => ({
-      id: `github:${repository}:${release.id ?? release.tag_name}`,
-      title: `${repository}: ${release.name || release.tag_name || "new release"}`,
-      summary: (release.body ?? "Official repository release").replace(/\s+/gu, " ").slice(0, 500),
-      url: release.html_url ?? `https://github.com/${repository}/releases`,
-      source: `GitHub · ${repository}`,
-      sourceKind: "github" as const,
-      publishedAt: release.published_at!,
-    }));
+export function parseGithubSearchHits(hits: GithubRepoSearchHit[], date: string): AiNewsItem[] {
+  return hits
+    .filter((hit) => hit.full_name && hit.created_at && withinNewsWindow(hit.created_at, date))
+    .map((hit) => {
+      const name = hit.full_name!;
+      const description = (hit.description ?? "").replace(/\s+/gu, " ").trim().slice(0, 140);
+      return {
+        id: `github:${name}`,
+        title: description ? `${name}：${description}` : `${name} · new repository`,
+        summary: description || "New AI repository on GitHub",
+        url: hit.html_url ?? `https://github.com/${name}`,
+        source: `GitHub · ${name}`,
+        sourceKind: "github" as const,
+        publishedAt: hit.created_at!,
+      };
+    });
 }
 
 async function fetchHackerNews(date: string, now: number): Promise<AiNewsItem[]> {
-  const start = Math.floor((now - 30 * 60 * 60 * 1_000) / 1_000);
+  // 3 天窗口：多取几天，再由 withinNewsWindow 精确过滤。
+  const start = Math.floor((now - 3 * 24 * 60 * 60 * 1_000) / 1_000);
   const url = new URL("https://hn.algolia.com/api/v1/search_by_date");
   url.searchParams.set("tags", "story");
   url.searchParams.set("numericFilters", `created_at_i>${start}`);
@@ -165,15 +176,32 @@ async function fetchArxiv(date: string): Promise<AiNewsItem[]> {
   return parseArxivFeed(await response.text(), date);
 }
 
-async function fetchGithub(repository: string, date: string): Promise<AiNewsItem[]> {
-  const response = await fetch(`https://api.github.com/repos/${repository}/releases?per_page=5`, {
-    headers: {
-      Accept: "application/vnd.github+json",
-      "User-Agent": "liang-intensity-calibrator",
-    },
-  });
-  if (!response.ok) throw new Error(`GitHub ${repository} ${response.status}`);
-  return parseGithubReleases(await response.json() as GithubRelease[], repository, date);
+const GITHUB_SEARCH_QUERIES: ReadonlyArray<(from: string) => string> = [
+  (from) => `org:deepseek-ai created:>=${from}`,
+  (from) => `topic:llm stars:>=20 created:>=${from}`,
+  (from) => `topic:deepseek stars:>=20 created:>=${from}`,
+];
+
+async function searchGithub(date: string): Promise<AiNewsItem[]> {
+  const from = dateBefore(date, 2);
+  const results = await Promise.allSettled(GITHUB_SEARCH_QUERIES.map(async (buildQuery) => {
+    const url = new URL("https://api.github.com/search/repositories");
+    url.searchParams.set("q", buildQuery(from));
+    url.searchParams.set("sort", "updated");
+    url.searchParams.set("order", "desc");
+    url.searchParams.set("per_page", "10");
+    const response = await fetch(url, {
+      headers: {
+        Accept: "application/vnd.github+json",
+        "User-Agent": "liang-intensity-calibrator",
+      },
+    });
+    if (response.status === 403 || response.status === 429) return [];
+    if (!response.ok) throw new Error(`GitHub search ${response.status}`);
+    const body = await response.json() as { items?: GithubRepoSearchHit[] };
+    return parseGithubSearchHits(body.items ?? [], date);
+  }));
+  return results.flatMap((result) => result.status === "fulfilled" ? result.value : []);
 }
 
 export function deduplicateNews(items: AiNewsItem[]): AiNewsItem[] {
@@ -196,10 +224,7 @@ export async function collectTodaysAiNews(
   const sources = [
     { source: "Hacker News", run: () => fetchHackerNews(date, now) },
     { source: "arXiv", run: () => fetchArxiv(date) },
-    ...GITHUB_REPOSITORIES.map((repository) => ({
-      source: `GitHub · ${repository}`,
-      run: () => fetchGithub(repository, date),
-    })),
+    { source: "GitHub 搜索", run: () => searchGithub(date) },
   ];
   let completed = 0;
   const results = await Promise.allSettled(sources.map(async ({ source, run }) => {

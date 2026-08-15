@@ -1,8 +1,8 @@
 import { runStructuredAi } from "./ai-runtime";
 import {
-  dateInSingapore,
   deduplicateNews,
   normalizeTitle,
+  withinNewsWindow,
   type AiNewsItem,
 } from "./ai-news-collector";
 
@@ -75,7 +75,7 @@ export function parseSearchedNews(value: unknown, date: string): AiNewsItem[] {
       || typeof record.url !== "string" || !/^https?:\/\//iu.test(record.url)
       || typeof record.source !== "string" || !record.source.trim()
       || typeof record.publishedAt !== "string"
-      || dateInSingapore(record.publishedAt) !== date
+      || !withinNewsWindow(record.publishedAt, date)
     ) return [];
     return [{
       id: `web:${stableId(record.url)}`,
@@ -88,6 +88,22 @@ export function parseSearchedNews(value: unknown, date: string): AiNewsItem[] {
     }];
   });
 }
+
+/**
+ * 经核验可用、信息丰富的常用 AI 官网与社区首页（不锁定具体模型页，避免链接失效）。
+ */
+export const TRUSTED_NEWS_SOURCES = [
+  "Qwen 官网 https://qwen.ai",
+  "智谱官网 https://www.zhipuai.cn/zh",
+  "Kimi 官网 https://www.kimi.com",
+  "DeepSeek 官网 https://www.deepseek.com",
+  "MiniMax 官网 https://www.minimax.io",
+  "阶跃星辰官网 https://www.stepfun.com",
+  "ModelScope 模型社区 https://modelscope.cn",
+] as const;
+
+export const TRUSTED_SOURCES_INSTRUCTION =
+  `优先核验以下已确认可用的官方来源：${TRUSTED_NEWS_SOURCES.join("、")}；其次官方博客与可靠科技媒体。`;
 
 type StructuredRunner = typeof runStructuredAi;
 
@@ -109,17 +125,18 @@ async function searchLanguage(
     [
       "这是日期敏感的 AI 新闻搜索任务。必须先加载 liang-wenfeng-perspective skill。",
       "使用 websearch 搜索，再用 webfetch 打开原始页面核验标题、来源和发布日期。",
-      "发布日期不明确、早于目标日期、未来日期、没有可访问 URL 的条目一律丢弃。",
+      "发布日期不明确、早于目标日期 2 天以上、未来日期、没有可访问 URL 的条目一律丢弃。",
       "优先官方实验室、论文、项目发布页，其次可靠科技媒体；不要把搜索摘要本身当作来源。",
+      TRUSTED_SOURCES_INSTRUCTION,
       "不要编造事实、URL、时间或来源。",
       COMPETITOR_COVERAGE_INSTRUCTION,
     ].join("\n"),
     [
-      `目标日期：${date}（Asia/Singapore）`,
+      `目标日期：${date}（Asia/Singapore），收稿窗口为包含目标日期在内的最近 3 天`,
       isChinese
         ? "搜索中文与中国科技来源中的全球 AI/大模型新闻，覆盖模型发布、研究突破、开源生态、推理效率、算力与重要公司动态；优先纳入上一条列出的 DeepSeek 竞争对手（千问/智谱/Kimi/豆包/MiniMax/文心/混元/阶跃/百川/零一万物/OpenAI/Anthropic/Google/Meta/xAI/Mistral/Microsoft）的新闻。输出中文摘要。"
         : "搜索英文与国际来源的全球 AI/大模型新闻，覆盖模型发布、研究突破、开源生态、推理效率、算力与重要公司动态；优先纳入 DeepSeek 主要竞争对手（Qwen/GLM/Kimi/Doubao/MiniMax/Ernie/Hunyuan/Step/Baichuan/Yi/OpenAI/Anthropic/Google/Meta/xAI/Mistral/Microsoft）的新闻。输出中文摘要。",
-      "只返回目标日期当天发布的新闻。若没有合格新闻，返回空 items。",
+      "只返回目标日期及之前 2 天内（共 3 天窗口）发布的新闻。若窗口内没有合格新闻，返回空 items。",
     ].join("\n"),
     SEARCH_SCHEMA,
   );
