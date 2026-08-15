@@ -22,7 +22,9 @@
 
 ## 素材与致谢
 
-`media` 与 `public/frames` 里的人像素材用于趣味演示。复用或二次发布前，请确认你拥有相关肖像与素材的使用权。
+本项目源代码以 [MIT 协议](LICENSE) 发布。
+
+`media` 与 `public/frames` 里的人像素材用于趣味演示，**素材不随 MIT 协议共享**。复用或二次发布前，请确认你拥有相关肖像与素材的使用权。
 
 社区投票功能的最初思路来自 [PR #7](https://github.com/Lichtspektrum/liang-intensity-calibrator/pull/7) 的 [@loggerhead](https://github.com/loggerhead)。
 
