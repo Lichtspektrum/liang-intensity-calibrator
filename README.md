@@ -28,7 +28,7 @@
 
 ---
 
-## Awesome 滑动变祖器
+## Awesome Sliders
 
 这里收集社区基于「滑动变祖器」的二创作品。把滑杆玩出花样的朋友们，欢迎通过 [Pull Request](https://github.com/Lichtspektrum/liang-intensity-calibrator/pulls) 提交你的项目：
 
