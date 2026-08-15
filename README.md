@@ -37,3 +37,4 @@
 - [Liang-Saint-Slider](https://github.com/BruzWJ/Liang-Saint-Slider) — by [@BruzWJ](https://github.com/BruzWJ)：把滑杆做成 DeepSeek Harness 的模型与思考强度选择器。
 - [liang-intensity-calibrator-ascii](https://github.com/Lichtspektrum/liang-intensity-calibrator-ascii) — by [@Lichtspektrum](https://github.com/Lichtspektrum)：ASCII 版，由原项目 31 张关键帧逐帧转出的纯 ASCII 动画。
 - [dsh-liang-skin](https://github.com/kingOfSoySauce/dsh-liang-skin) — by [@kingOfSoySauce](https://github.com/kingOfSoySauce)：DeepSeek Harness 滑动变阻器皮肤。
+- [dsh-liang-watch](https://github.com/huangmouren2023/deepseek-harness-toolkit/tree/main/tools/dsh-liang-watch) — by [@huangmouren2023](https://github.com/huangmouren2023)：DeepSeek Harness 梁强度雷达——把社区投票与每日时间线变成模型工具和侧边栏面板，可在对话里直接查分、投票、看趋势。
