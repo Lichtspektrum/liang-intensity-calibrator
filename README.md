@@ -22,7 +22,7 @@
 需要 Node.js 24 或更高版本。
 
 ```bash
-git clone <你的仓库地址>
+git clone https://github.com/Pawnnwap/liang-intensity-calibrator.git
 cd liang-intensity-calibrator
 npm install
 cp .env.example .env.local   # 可选：按需修改配置
