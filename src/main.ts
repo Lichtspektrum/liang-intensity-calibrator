@@ -1,7 +1,7 @@
 import "./styles.css";
 
 import { type AppController, type AppMode, mountApp } from "./app";
-import { ChatRateLimitError, createApiClient, type ModePositionsData, type NewsVariant, type ScoreData, type TimelineDayData } from "./api";
+import { ChatRateLimitError, createApiClient, type ModePositionsData, type NewsVariant, type ScoreData, type TimelineDayData, type VoteResult } from "./api";
 import { MAX_SCORE, MIN_SCORE } from "./score-domain";
 import { easeInOutCubic, scoreTransitionDurationMs } from "./score-transition";
 import {
@@ -13,6 +13,7 @@ import {
 const MANUAL_STORAGE_KEY = "liang-slider:manual-position:v1";
 const CHAT_ACTIVE_STORAGE_KEY = "liang-slider:active-chat:v1";
 const CHAT_MODEL_STORAGE_KEY = "liang-slider:chat-model:v1";
+const FALLBACK_FINGERPRINT_KEY = "liang-slider:fallback-fingerprint:v1";
 
 interface StoredVote {
   position: number;
@@ -95,11 +96,137 @@ function syncActiveVoteFromStorage(): StoredVote | null {
   return activeVote;
 }
 
+function getFallbackFingerprint(): string {
+  const stored = localStorage.getItem(FALLBACK_FINGERPRINT_KEY);
+  if (stored) return stored;
+  const fingerprint = `fallback-${crypto.randomUUID()}`;
+  localStorage.setItem(FALLBACK_FINGERPRINT_KEY, fingerprint);
+  return fingerprint;
+}
+
+let cooldownTimeout: ReturnType<typeof setTimeout> | null = null;
+let cooldownDeadline: number | null = null;
+let cooldownGeneration = 0;
+
+function showCooldownUntil(nextVoteAt: number, announce = false): void {
+  cooldownGeneration += 1;
+  const generation = cooldownGeneration;
+  if (cooldownTimeout !== null) {
+    clearTimeout(cooldownTimeout);
+    cooldownTimeout = null;
+  }
+  cooldownDeadline = nextVoteAt;
+  let announced = false;
+  const update = (): void => {
+    if (generation !== cooldownGeneration) return;
+    const remainingMs = Math.max(0, nextVoteAt - Date.now());
+    if (announce && !announced) {
+      controller?.setCooldown(remainingMs, true);
+      announced = true;
+    } else {
+      controller?.setCooldown(remainingMs);
+    }
+    if (remainingMs <= 0) {
+      cooldownTimeout = null;
+      cooldownDeadline = null;
+      return;
+    }
+    const displayedMinutes = Math.ceil(remainingMs / 60_000);
+    const nextBoundaryMs = remainingMs - (displayedMinutes - 1) * 60_000;
+    cooldownTimeout = setTimeout(update, Math.max(1, nextBoundaryMs));
+  };
+  update();
+}
+
+function clearCooldown(): void {
+  cooldownGeneration += 1;
+  cooldownDeadline = null;
+  if (cooldownTimeout !== null) {
+    clearTimeout(cooldownTimeout);
+    cooldownTimeout = null;
+  }
+}
+
+async function submitVote(position: number): Promise<void> {
+  if (!controller) return;
+  // 未配置 API 时退化为纯本机记忆。
+  if (!api.configured) {
+    saveStoredVote({ position, nextVoteAt: 0 });
+    controller.setUserVotePosition(position);
+    controller.restoreVote(position);
+    return;
+  }
+  try {
+    const result = await api.submitVote(getFallbackFingerprint(), position);
+    if (result.accepted) {
+      saveStoredVote({ position, nextVoteAt: result.nextVoteAt });
+      controller.setUserVotePosition(position);
+      applyCommunityScore(result);
+      controller.setVotingState({
+        voterCount: result.voterCount,
+        todayVoterCount: result.todayVoterCount,
+        positiveCount: result.positiveCount,
+        negativeCount: result.negativeCount,
+        neutralCount: result.neutralCount,
+        positivePoints: result.positivePoints,
+        negativePoints: result.negativePoints,
+      });
+      showCooldownUntil(result.nextVoteAt, true);
+      controller.restoreVote(position);
+      return;
+    }
+
+    // 冷却 / 限流等拒绝响应同样携带最新社区状态。
+    if (result.reason === "cooldown") {
+      applyCommunityScore(result);
+      controller.setVotingState({
+        voterCount: result.voterCount,
+        todayVoterCount: result.todayVoterCount,
+        positiveCount: result.positiveCount,
+        negativeCount: result.negativeCount,
+        neutralCount: result.neutralCount,
+        positivePoints: result.positivePoints,
+        negativePoints: result.negativePoints,
+      });
+      saveStoredVote({ position: result.userPosition, nextVoteAt: result.nextVoteAt });
+      controller.setUserVotePosition(result.userPosition);
+      showCooldownUntil(result.nextVoteAt, true);
+      controller.restoreVote(result.userPosition);
+      return;
+    }
+    if (result.reason === "rate_limited") {
+      applyCommunityScore(result);
+      controller.setVotingState({
+        voterCount: result.voterCount,
+        todayVoterCount: result.todayVoterCount,
+        positiveCount: result.positiveCount,
+        negativeCount: result.negativeCount,
+        neutralCount: result.neutralCount,
+        positivePoints: result.positivePoints,
+        negativePoints: result.negativePoints,
+      });
+      saveStoredVote({ position, nextVoteAt: 0 });
+      controller.setUserVotePosition(position);
+      controller.restoreVote(position);
+      return;
+    }
+    // invalid_* 只在请求异常时出现；降级为本机记忆。
+    saveStoredVote({ position, nextVoteAt: 0 });
+    controller.setUserVotePosition(position);
+    controller.setVoteError();
+    controller.restoreVote(position);
+  } catch {
+    // 网络失败：保留本机位置，提示稍后重试。
+    saveStoredVote({ position, nextVoteAt: 0 });
+    controller.setUserVotePosition(position);
+    controller.setVoteError();
+    controller.restoreVote(position);
+  }
+}
+
 controller.onVote = (position: number) => {
   if (!controller) return;
-  saveStoredVote({ position, nextVoteAt: 0 });
-  controller.setUserVotePosition(position);
-  controller.restoreVote(position);
+  void submitVote(position);
 };
 
 async function persistModePositions(): Promise<void> {
@@ -436,10 +563,22 @@ async function loadCommunity(): Promise<void> {
   try {
     const score = await api.fetchScore();
     applyCommunityScore(score);
+    controller.setVotingState({
+      voterCount: score.voterCount,
+      todayVoterCount: score.todayVoterCount,
+      positiveCount: score.positiveCount,
+      negativeCount: score.negativeCount,
+      neutralCount: score.neutralCount,
+      positivePoints: score.positivePoints,
+      negativePoints: score.negativePoints,
+    });
     const latestVote = syncActiveVoteFromStorage();
     if (latestVote) {
       controller.setUserVotePosition(latestVote.position);
       controller.restoreVote(latestVote.position);
+      if (latestVote.nextVoteAt > Date.now()) {
+        showCooldownUntil(latestVote.nextVoteAt);
+      }
     }
   } catch {
     controller.setCommunityUnavailable();
@@ -467,6 +606,9 @@ function bootstrap(): void {
   controller?.setUserVotePosition(currentVote?.position ?? null);
   if (currentVote) {
     controller?.restoreVote(currentVote.position);
+    if (currentVote.nextVoteAt > Date.now()) {
+      showCooldownUntil(currentVote.nextVoteAt);
+    }
   }
   void loadModePositions();
   void loadMedia();

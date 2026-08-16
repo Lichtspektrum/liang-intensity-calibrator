@@ -17,7 +17,7 @@ const milestones = [
   [15, "梁祖"],
 ] as const;
 
-test("手动模式显示 31 级变阻器，且没有投票或限时文案", async ({ page }) => {
+test("手动模式显示 31 级变阻器与社区投票状态行", async ({ page }) => {
   await installApiRoutes(page);
   await page.goto(APP_PATH);
 
@@ -29,11 +29,12 @@ test("手动模式显示 31 级变阻器，且没有投票或限时文案", asyn
   await expect(page.locator(".tick")).toHaveCount(31);
   await expect(page.locator(".stage-marker")).toHaveText(milestones.map(([, stage]) => stage));
   await expect(page.locator(".rheostat-chassis")).toBeVisible();
-  await expect(page.locator(".drag-hint")).toContainText("松开后记住当前位置");
-  await expect(page.locator("body")).not.toContainText(/投票|3\s*小时/u);
+  await expect(page.locator(".drag-hint")).toContainText("松开即提交");
+  await expect(page.locator(".vote-status")).toContainText("你的投票");
+  await expect(page.locator(".vote-status")).toContainText(/每 3 小时|社区平均/u);
 });
 
-test("真实鼠标拖动可连续改变手动强度并保存在本机", async ({ page }) => {
+test("真实鼠标拖动可连续改变手动强度并提交社区投票", async ({ page }) => {
   const api = await installApiRoutes(page);
   await page.goto(APP_PATH);
 
@@ -48,7 +49,7 @@ test("真实鼠标拖动可连续改变手动强度并保存在本机", async ({
   await expect.poll(async () => Number(await slider.inputValue())).toBeGreaterThan(8);
   const stored = await page.evaluate((key) => localStorage.getItem(key), MANUAL_STORAGE_KEY);
   expect(JSON.parse(stored ?? "null").position).toBeGreaterThan(8);
-  expect(api.voteRequests).toHaveLength(0);
+  expect(api.voteRequests).toHaveLength(1);
 });
 
 test("手动位置可随时修改，刷新后恢复最新位置", async ({ page }) => {
@@ -60,7 +61,7 @@ test("手动位置可随时修改，刷新后恢复最新位置", async ({ page 
   await expect(page.locator("#strength-slider")).toHaveValue("-10");
   await page.reload();
   await expect(page.locator("#strength-slider")).toHaveValue("-10");
-  expect(api.voteRequests).toHaveLength(0);
+  expect(api.voteRequests).toHaveLength(2);
 });
 
 test("在线基线不可用时仍可手动拖动", async ({ page }) => {
@@ -68,7 +69,8 @@ test("在线基线不可用时仍可手动拖动", async ({ page }) => {
   await page.goto(APP_PATH);
 
   await expect(page.locator("#strength-slider")).toBeEnabled();
-  await expect(page.locator(".calibration-status")).toHaveText("在线状态暂不可用，仍可继续手动校准");
+  await expect(page.locator(".calibration-status")).toHaveText("拖动滑片校准并参与社区投票，位置与投票都会记住");
+  await expect(page.locator(".vote-status")).toContainText("社区数据暂时无法加载");
   await setSliderScore(page, 12);
   await expect(page.locator(".portrait-canvas")).toHaveAttribute("data-frame", "216");
 });

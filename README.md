@@ -8,8 +8,10 @@
 
 - 六个状态：小难梁、牢梁、梁子、梁圣、梁神、梁祖
 - 滑杆范围为 -15 到 +15，支持鼠标、触摸和键盘
-- 本机记忆上一次手动校准位置
+- 手动模式即社区投票：每个浏览器保留一张票，每 3 小时可修改一次；灰色圆点显示社区平均分，状态行实时显示你的投票、社区平均、今日与累计投票人数及正负向票数
+- 本机记忆上一次手动校准位置（投票冷却期间也能离线回看）
 - 新闻模式：采集近 3 天（含当日）的 AI 新闻，再按原创、开放、效率、智能与克制五个维度校准；搜索提示词会专门覆盖 DeepSeek 主要竞争对手（千问/智谱/Kimi/豆包/MiniMax/文心/混元/OpenAI/Anthropic/Google/Meta/xAI/Mistral 等）的动态，并优先核验已确认可用的官方来源（Qwen/智谱/Kimi/DeepSeek/MiniMax/阶跃星辰官网与 ModelScope）
+- 新闻模式区分快速版（仅运行 opencode.ai/data 定价与缓存、artificialanalysis.ai 模型排名两个规则信号）与深度版（全量采集 + 五维分析）；进入后按「开始」才运行，可选每 30 分钟自动刷新
 - 新闻采集显示真实分阶段进度、来源计数、耗时和详细事件；完成后在校准结论旁以安全 Markdown 展示新闻
 - 对话模式：连续保留上下文，校准输入，并以梁文锋第一人称角色和公开材料提炼出的思考框架回答；遇到最新事实类问题可联网核实（websearch/webfetch）后自然带出，仍保持角色不泄露工具身份
 - 对话历史：每个对话保留在侧边栏，可查看、继续或删除；每次回答都会记录当时的强度分值与阶段，重新打开对话时变阻器回到最后一次回答的分值
@@ -75,8 +77,18 @@ npm run build
 人像素材用于趣味演示；复用或二次发布前，请确认相关肖像与素材的使用权（素材不属于本仓库）。
 
 - 原项目（手动模式）作者：Lichtspektrum [liang-intensity-calibrator](https://github.com/Lichtspektrum/liang-intensity-calibrator)
+- 社区投票功能的最初思路来自上游 [PR #7](https://github.com/Lichtspektrum/liang-intensity-calibrator/pull/7) 的 [@loggerhead](https://github.com/loggerhead)
 - 人物框架提炼方法参考 [nuwa-skill](https://github.com/alchaincyf/nuwa-skill)
 - AI 新闻采集结构参考 [wanshi-tong](https://github.com/Pawnnwap/wanshi-tong)
+
+## Awesome Sliders
+
+这里收集社区基于「滑动变祖器」的二创作品。把滑杆玩出花样的朋友们，欢迎通过 [Pull Request](https://github.com/Lichtspektrum/liang-intensity-calibrator/pulls) 提交你的项目：
+
+- [Liang-Saint-Slider](https://github.com/BruzWJ/Liang-Saint-Slider) — by [@BruzWJ](https://github.com/BruzWJ)：把滑杆做成 DeepSeek Harness 的模型与思考强度选择器。
+- [liang-intensity-calibrator-ascii](https://github.com/Lichtspektrum/liang-intensity-calibrator-ascii) — by [@Lichtspektrum](https://github.com/Lichtspektrum)：ASCII 版，由原项目 31 张关键帧逐帧转出的纯 ASCII 动画。
+- [dsh-liang-skin](https://github.com/kingOfSoySauce/dsh-liang-skin) — by [@kingOfSoySauce](https://github.com/kingOfSoySauce)：DeepSeek Harness 滑动变阻器皮肤。
+- [dsh-liang-watch](https://github.com/huangmouren2023/deepseek-harness-toolkit/tree/main/tools/dsh-liang-watch) — by [@huangmouren2023](https://github.com/huangmouren2023)：DeepSeek Harness 梁强度雷达——把社区投票与每日时间线变成模型工具和侧边栏面板，可在对话里直接查分、投票、看趋势。
 
 ## 许可证
 

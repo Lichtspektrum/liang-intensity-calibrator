@@ -185,7 +185,7 @@ describe("persistent ballots", () => {
     await expect(responseJson(response)).resolves.toEqual({
       accepted: true,
       userPosition: 6,
-      nextVoteAt: 0,
+      nextVoteAt: NOW + VOTE_COOLDOWN_MS,
       score: 6,
       stage: "梁圣",
       voterCount: 1,
@@ -208,11 +208,11 @@ describe("persistent ballots", () => {
     expect(JSON.stringify([...rows.values()])).not.toContain("203.0.113.8");
   });
 
-  it("updates a saved ballot immediately without a cooldown", async () => {
+  it("updates a saved ballot once the three-hour cooldown has passed", async () => {
     vi.spyOn(Date, "now").mockReturnValue(NOW);
     const voterHash = await hmacIdentifier(SECRET, "voter:browser-fingerprint");
     const ipHash = await hmacIdentifier(SECRET, "ip:203.0.113.8");
-    const updatedAt = NOW - VOTE_COOLDOWN_MS + 1;
+    const updatedAt = NOW - VOTE_COOLDOWN_MS - 1;
     const { env, writes } = createVoteEnv([{
       voter_hash: voterHash,
       ip_hash: ipHash,
@@ -230,7 +230,7 @@ describe("persistent ballots", () => {
     await expect(responseJson(response)).resolves.toEqual({
       accepted: true,
       userPosition: 12,
-      nextVoteAt: 0,
+      nextVoteAt: NOW + VOTE_COOLDOWN_MS,
       score: 12,
       stage: "梁神",
       voterCount: 1,
@@ -242,6 +242,34 @@ describe("persistent ballots", () => {
       negativePoints: 0,
     });
     expect(writes).toHaveLength(1);
+  });
+
+  it("rejects a repeat vote inside the cooldown with a 429 cooldown response", async () => {
+    vi.spyOn(Date, "now").mockReturnValue(NOW);
+    const voterHash = await hmacIdentifier(SECRET, "voter:browser-fingerprint");
+    const ipHash = await hmacIdentifier(SECRET, "ip:203.0.113.8");
+    const updatedAt = NOW - VOTE_COOLDOWN_MS + 1;
+    const { env, writes } = createVoteEnv([{
+      voter_hash: voterHash,
+      ip_hash: ipHash,
+      position: -4,
+      created_at: NOW - 86_400_000,
+      updated_at: updatedAt,
+    }]);
+
+    const response = await handlePostVote(
+      voteRequest({ position: 12, fingerprint: "browser-fingerprint" }),
+      env,
+    );
+
+    expect(response.status).toBe(429);
+    await expect(responseJson(response)).resolves.toMatchObject({
+      accepted: false,
+      reason: "cooldown",
+      userPosition: -4,
+      nextVoteAt: updatedAt + VOTE_COOLDOWN_MS,
+    });
+    expect(writes).toHaveLength(0);
   });
 
   it("updates the same voter freely while preserving created_at", async () => {
@@ -273,16 +301,17 @@ describe("persistent ballots", () => {
     });
     expect(writes).toHaveLength(1);
     expect(writes[0]?.sql).toContain("UPDATE voters");
-    expect(writes[0]?.sql).not.toContain("updated_at <= ?");
+    expect(writes[0]?.sql).toContain("updated_at <= ?");
     expect(writes[0]?.values).toEqual([
       9,
       NOW,
       voterHash,
+      NOW - VOTE_COOLDOWN_MS,
     ]);
     await expect(responseJson(response)).resolves.toMatchObject({
       accepted: true,
       userPosition: 9,
-      nextVoteAt: 0,
+      nextVoteAt: NOW + VOTE_COOLDOWN_MS,
       voterCount: 1,
       score: 9,
     });
@@ -348,7 +377,7 @@ describe("persistent ballots", () => {
           ip_hash: ipHash,
           position: 11,
           created_at: createdAt,
-          updated_at: NOW,
+          updated_at: NOW - VOTE_COOLDOWN_MS - 1,
         });
       },
     });
@@ -364,7 +393,7 @@ describe("persistent ballots", () => {
     await expect(responseJson(response)).resolves.toMatchObject({
       accepted: true,
       userPosition: -12,
-      nextVoteAt: 0,
+      nextVoteAt: NOW + VOTE_COOLDOWN_MS,
     });
   });
 });
@@ -469,7 +498,7 @@ describe("new-identity rate limiting", () => {
           ip_hash: ipHash,
           position: 4,
           created_at: NOW,
-          updated_at: NOW,
+          updated_at: NOW - VOTE_COOLDOWN_MS - 1,
         });
       },
     });
@@ -485,7 +514,7 @@ describe("new-identity rate limiting", () => {
     await expect(responseJson(response)).resolves.toMatchObject({
       accepted: true,
       userPosition: 12,
-      nextVoteAt: 0,
+      nextVoteAt: NOW + VOTE_COOLDOWN_MS,
     });
   });
 
@@ -702,7 +731,12 @@ describe("SQLite integration", () => {
       );
 
       expect(first.status).toBe(200);
-      expect(immediateUpdate.status).toBe(200);
+      // 3 小时冷却内再次投票被拒
+      expect(immediateUpdate.status).toBe(429);
+      await expect(responseJson(immediateUpdate)).resolves.toMatchObject({
+        accepted: false,
+        reason: "cooldown",
+      });
       expect(update.status).toBe(200);
       const stored = database.prepare(
         "SELECT ip_hash, position, created_at, updated_at FROM voters",

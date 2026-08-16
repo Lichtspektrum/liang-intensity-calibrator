@@ -3,7 +3,9 @@ import { MAX_SCORE, MIN_SCORE } from "../score-domain";
 import { getCommunityScore, type CommunityScore } from "./score";
 import {
   NEW_IDENTITIES_PER_IP_PER_DAY,
+  VOTE_COOLDOWN_MS,
   allowedOrigin,
+  getCooldownState,
   hmacIdentifier,
   jsonResponse,
   type Env,
@@ -94,11 +96,22 @@ async function updateVoter(
     .prepare(
       `UPDATE voters
        SET position = ?, updated_at = ?
-       WHERE voter_hash = ?`,
+       WHERE voter_hash = ? AND updated_at <= ?`,
     )
-    .bind(position, now, voterHash)
+    .bind(position, now, voterHash, now - VOTE_COOLDOWN_MS)
     .run();
   return result.meta?.changes === 1;
+}
+
+async function cooldownResponse(env: Env, voter: VoterRow): Promise<Response> {
+  const aggregate = await getCommunityScore(env);
+  return jsonResponse({
+    accepted: false,
+    reason: "cooldown",
+    userPosition: voter.position,
+    nextVoteAt: voter.updated_at + VOTE_COOLDOWN_MS,
+    ...scoreFields(aggregate),
+  } satisfies VoteResponse, { status: 429 });
 }
 
 export async function handlePostVote(request: Request, env: Env): Promise<Response> {
@@ -158,9 +171,15 @@ export async function handlePostVote(request: Request, env: Env): Promise<Respon
   const existing = await getExistingVoter(env, voterHash);
 
   if (existing) {
+    const cooldown = getCooldownState(existing.updated_at, now);
+    if (!cooldown.allowed) {
+      return cooldownResponse(env, existing);
+    }
     const updated = await updateVoter(env, voterHash, body.position, now);
     if (!updated) {
-      throw new Error("Voter disappeared during update");
+      const current = await getExistingVoter(env, voterHash);
+      if (!current) throw new Error("Voter disappeared during conditional update");
+      return cooldownResponse(env, current);
     }
   } else {
     const inserted = await insertVoter(env, voterHash, ipHash, body.position, now);
@@ -168,7 +187,11 @@ export async function handlePostVote(request: Request, env: Env): Promise<Respon
       const concurrentVoter = await getExistingVoter(env, voterHash);
       if (concurrentVoter) {
         const updated = await updateVoter(env, voterHash, body.position, now);
-        if (!updated) throw new Error("Concurrent voter disappeared during update");
+        if (!updated) {
+          const current = await getExistingVoter(env, voterHash);
+          if (!current) throw new Error("Concurrent voter disappeared during update");
+          return cooldownResponse(env, current);
+        }
       } else {
         const aggregate = await getCommunityScore(env);
         return jsonResponse({
@@ -186,7 +209,7 @@ export async function handlePostVote(request: Request, env: Env): Promise<Respon
   return jsonResponse({
     accepted: true,
     userPosition: body.position,
-    nextVoteAt: 0,
+    nextVoteAt: now + VOTE_COOLDOWN_MS,
     ...scoreFields(aggregate),
   } satisfies VoteResponse);
 }

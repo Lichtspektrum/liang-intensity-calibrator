@@ -17,12 +17,13 @@ const env = {
 } as Env;
 
 describe("voting limits", () => {
-  it("keeps repeat voting permanently unlocked", () => {
-    expect(VOTE_COOLDOWN_MS).toBe(0);
-    expect(getCooldownState(1_000, 999)).toEqual({
-      allowed: true,
-      nextVoteAt: 1_000,
-    });
+  it("blocks repeat voting within the three-hour cooldown", () => {
+    expect(VOTE_COOLDOWN_MS).toBe(3 * 60 * 60 * 1_000);
+    const updatedAt = 1_000;
+    const nextVoteAt = updatedAt + VOTE_COOLDOWN_MS;
+    expect(getCooldownState(updatedAt, updatedAt)).toEqual({ allowed: false, nextVoteAt });
+    expect(getCooldownState(updatedAt, nextVoteAt - 1)).toEqual({ allowed: false, nextVoteAt });
+    expect(getCooldownState(updatedAt, nextVoteAt)).toEqual({ allowed: true, nextVoteAt });
   });
 
   it("limits new identities per IP to five each day", () => {

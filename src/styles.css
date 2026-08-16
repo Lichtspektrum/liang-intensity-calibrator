@@ -1398,6 +1398,45 @@ h1 {
   color: var(--accent);
 }
 
+.vote-status {
+  margin: -2px 0 8px;
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-align: center;
+}
+
+.vote-status[data-state="cooldown"] {
+  color: var(--accent);
+}
+
+.vote-status[data-state="community-unavailable"],
+.vote-status[data-state="error"] {
+  color: var(--accent);
+}
+
+.vote-status[hidden],
+.community-ghost-thumb[hidden] {
+  display: none;
+}
+
+.community-ghost-thumb {
+  position: absolute;
+  z-index: 2;
+  top: var(--rheostat-guide-y);
+  left: var(--community-position, 50%);
+  width: 15px;
+  height: 15px;
+  border: 2px solid color-mix(in srgb, var(--muted) 75%, transparent);
+  border-radius: 50%;
+  background: radial-gradient(circle, var(--muted) 0 3.5px, transparent 4px);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--thumb-bg) 70%, transparent);
+  pointer-events: none;
+  transform: translate(-50%, -50%);
+  transition: left 300ms ease;
+}
+
 .tick-track {
   position: absolute;
   top: 12px;

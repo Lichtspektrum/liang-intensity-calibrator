@@ -6,8 +6,9 @@ AI 新闻校准、梁式对话、对话历史等），不保证与原项目兼�
 
 ## 原项目代码
 
-继承自上游仓库的代码（手动滑杆、基础渲染等）**未声明许可证**，按默认规则保留所有权利，
-归原作者所有。对该部分代码的复制、修改与再分发需获得上游作者许可。
+上游仓库 [Lichtspektrum/liang-intensity-calibrator](https://github.com/Lichtspektrum/liang-intensity-calibrator)
+已随更新采用 [MIT 许可证](https://github.com/Lichtspektrum/liang-intensity-calibrator/blob/main/LICENSE)
+（Copyright (c) 2026 Lichtspektrum），继承自上游的手动滑杆、投票与基础渲染等代码按 MIT 条款许可。
 
 ## 本分支新增代码
 

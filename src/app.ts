@@ -36,6 +36,16 @@ export interface AppController {
   setError(message: string): void;
   setCommunityUnavailable(): void;
   setVoteError(): void;
+  setCooldown(remainingMs: number, announce?: boolean): void;
+  setVotingState(state: {
+    voterCount: number;
+    todayVoterCount: number;
+    positiveCount: number;
+    negativeCount: number;
+    neutralCount: number;
+    positivePoints: number;
+    negativePoints: number;
+  }): void;
   restoreVote(position: number): void;
   setCommunityScore(score: ScoreData): void;
   setUserVotePosition(position: number | null): void;
@@ -187,6 +197,7 @@ export function mountApp(
           <div class="slider-layout" aria-label="梁系强度变阻器">
             <div class="range-control">
               <p class="calibration-status" role="status" aria-live="polite">拖动滑片即可连续校准，当前位置会保存在本机</p>
+              <p class="vote-status" role="status" aria-live="polite" hidden></p>
               <div class="rheostat-scale">
                 <div class="tick-track">${createTicks()}</div>
                 <ol class="stage-markers">${createStageMarkers()}</ol>
@@ -194,6 +205,7 @@ export function mountApp(
               <div class="range-wrap">
                 <img class="rheostat-chassis" src="${import.meta.env.BASE_URL}assets/rheostat-design-b-chassis.png" alt="" aria-hidden="true" />
                 <div class="rheostat-rail-overlay">
+                  <span class="community-ghost-thumb" aria-hidden="true" hidden></span>
                   <span class="rheostat-wiper" aria-hidden="true"></span>
                   <input
                     id="strength-slider"
@@ -211,7 +223,7 @@ export function mountApp(
               </div>
             </div>
           </div>
-          <p class="drag-hint"><span aria-hidden="true">←</span> 拖动滑片连续校准。−15 最弱，0 居中，+15 最强；松开后记住当前位置。 <span aria-hidden="true">→</span></p>
+          <p class="drag-hint"><span aria-hidden="true">←</span> 拖动滑片校准并参与社区投票，松开即提交。−15 最弱，0 居中，+15 最强；每 3 小时可修改一次。 <span aria-hidden="true">→</span></p>
           <section class="mode-panel news-panel" aria-live="polite" hidden>
             <div class="mode-panel-header">
               <div>
@@ -333,6 +345,8 @@ export function mountApp(
   const markers = Array.from(root.querySelectorAll<HTMLElement>(".stage-marker"));
 
   const calibrationStatus = root.querySelector<HTMLElement>(".calibration-status")!;
+  const voteStatus = root.querySelector<HTMLElement>(".vote-status")!;
+  const communityGhostThumb = root.querySelector<HTMLElement>(".community-ghost-thumb")!;
 
   const timelineTrack = root.querySelector<HTMLElement>(".timeline-track")!;
   const timelineReturnBtn = root.querySelector<HTMLButtonElement>(".timeline-return-btn")!;
@@ -381,31 +395,82 @@ export function mountApp(
   const modePositions: Partial<Record<AppMode, number>> = {};
   let mediaReady = false;
   let communityLevel = 0;
+  let communityTodayVoters = 0;
+  let communityTotalVoters = 0;
+  let communityPositive = 0;
+  let communityNegative = 0;
   let userVotePosition: number | null = null;
   let communityStatus: "unknown" | "available" | "unavailable" = "unknown";
-  let actionStatus: "normal" | "error" = "normal";
+  let actionStatus: "normal" | "error" | "cooldown" = "normal";
+  let cooldownRemainingMs = 0;
+  let cooldownBannerVisible = false;
+  let cooldownBannerTimer: ReturnType<typeof setTimeout> | null = null;
+
+  const VOTE_ANNOUNCE_MS = 2_000;
+  const VOTE_FADE_MS = 240;
+
+  const formatCooldownDuration = (remainingMs: number): string => {
+    const totalMinutes = Math.max(1, Math.ceil(remainingMs / 60_000));
+    const hours = Math.floor(totalMinutes / 60);
+    const minutes = totalMinutes % 60;
+    if (hours > 0 && minutes > 0) return `${hours} 小时 ${minutes} 分`;
+    if (hours > 0) return `${hours} 小时`;
+    return `${minutes} 分`;
+  };
+
+  const hideCooldownBanner = (): void => {
+    cooldownBannerTimer = null;
+    cooldownBannerVisible = false;
+    renderVoteStatus();
+  };
 
   const renderVoteStatus = (): void => {
     if (appMode === "news") {
       calibrationStatus.dataset.state = "automatic";
       calibrationStatus.textContent = "由今日 AI 新闻自动校准，变阻器将跟随分析结果";
+      voteStatus.hidden = true;
+      communityGhostThumb.hidden = true;
       return;
     }
 
     if (appMode === "chat") {
       calibrationStatus.dataset.state = "automatic";
       calibrationStatus.textContent = "由当前对话自动校准，变阻器将平滑移动到分析结果";
+      voteStatus.hidden = true;
+      communityGhostThumb.hidden = true;
       return;
     }
 
     if (actionStatus === "error") {
       calibrationStatus.dataset.state = "error";
       calibrationStatus.textContent = "在线状态暂不可用，仍可继续手动校准";
+      voteStatus.hidden = true;
       return;
     }
 
     calibrationStatus.dataset.state = "normal";
-    calibrationStatus.textContent = "拖动滑片即可连续校准，当前位置会保存在本机";
+    calibrationStatus.textContent = "拖动滑片校准并参与社区投票，位置与投票都会记住";
+
+    voteStatus.hidden = false;
+    if (actionStatus === "cooldown" && cooldownBannerVisible) {
+      voteStatus.dataset.state = "cooldown";
+      voteStatus.textContent = `还需 ${formatCooldownDuration(cooldownRemainingMs)}才能修改投票`;
+      return;
+    }
+
+    const participation = communityStatus === "available"
+      ? `　今日 ${communityTodayVoters} 人投票 · 累计 ${communityTotalVoters} 人`
+      : "";
+    if (communityStatus === "unavailable") {
+      voteStatus.dataset.state = "community-unavailable";
+      voteStatus.textContent = "社区数据暂时无法加载，仍在本地校准";
+      return;
+    }
+    voteStatus.dataset.state = "normal";
+    const mine = userVotePosition === null ? "未投票" : formatStatusScore(userVotePosition);
+    voteStatus.textContent = `你的投票：${mine}　社区平均：${formatStatusScore(communityLevel)}`
+      + participation
+      + (communityStatus === "available" ? `　↑${communityPositive} ↓${communityNegative}` : "");
   };
 
   const updateVisuals = (score: number) => {
@@ -593,6 +658,7 @@ export function mountApp(
   };
 
   setScore(0);
+  renderVoteStatus();
 
   const controller: AppController = {
     canvas,
@@ -620,11 +686,33 @@ export function mountApp(
     },
     setCommunityUnavailable() {
       communityStatus = "unavailable";
-      actionStatus = "error";
+      communityGhostThumb.hidden = true;
       renderVoteStatus();
     },
     setVoteError() {
       actionStatus = "error";
+      renderVoteStatus();
+    },
+    setCooldown(remainingMs, announce = false) {
+      if (remainingMs <= 0) {
+        actionStatus = "normal";
+        cooldownRemainingMs = 0;
+        if (cooldownBannerTimer !== null) {
+          clearTimeout(cooldownBannerTimer);
+          cooldownBannerTimer = null;
+        }
+        cooldownBannerVisible = false;
+        renderVoteStatus();
+        return;
+      }
+      actionStatus = "cooldown";
+      cooldownRemainingMs = remainingMs;
+      if (announce && !cooldownBannerVisible) {
+        cooldownBannerVisible = true;
+        renderVoteStatus();
+        cooldownBannerTimer = setTimeout(hideCooldownBanner, VOTE_ANNOUNCE_MS);
+        return;
+      }
       renderVoteStatus();
     },
     restoreVote(position) {
@@ -635,10 +723,23 @@ export function mountApp(
     setCommunityScore(scoreData) {
       communityLevel = scoreData.score;
       communityStatus = "available";
+      communityGhostThumb.hidden = false;
+      const communityState = describeScore(communityLevel);
+      communityGhostThumb.style.setProperty(
+        "--community-position",
+        String(communityState.trackProgress * 100),
+      );
       renderVoteStatus();
       if (currentMode === "idle" && actionStatus === "normal") {
         setScore(userVotePosition ?? communityLevel);
       }
+    },
+    setVotingState(state) {
+      communityTodayVoters = state.todayVoterCount;
+      communityTotalVoters = state.voterCount;
+      communityPositive = state.positiveCount;
+      communityNegative = state.negativeCount;
+      renderVoteStatus();
     },
     setUserVotePosition(position) {
       userVotePosition = position === null ? null : clampScore(position);

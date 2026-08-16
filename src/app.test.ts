@@ -54,17 +54,25 @@ describe("liang slider app", () => {
     expect(root.querySelector(".load-state")?.textContent).toBe("载入连续祖力…");
   });
 
-  it("只展示本机手动校准说明，不展示未完成的在线功能文案", () => {
-    mountApp(root);
+  it("手动模式展示社区投票状态行与提示，新闻/对话模式隐藏", () => {
+    const controller = mountApp(root);
 
     const status = root.querySelector(".calibration-status")!;
-    expect(status.textContent).toBe("拖动滑片即可连续校准，当前位置会保存在本机");
+    expect(status.textContent).toBe("拖动滑片校准并参与社区投票，位置与投票都会记住");
     expect(status.getAttribute("role")).toBe("status");
     expect(status.getAttribute("aria-live")).toBe("polite");
     expect(root.querySelector(".drag-hint")?.textContent?.replace(/\s+/g, " ").trim()).toBe(
-      "← 拖动滑片连续校准。−15 最弱，0 居中，+15 最强；松开后记住当前位置。 →",
+      "← 拖动滑片校准并参与社区投票，松开即提交。−15 最弱，0 居中，+15 最强；每 3 小时可修改一次。 →",
     );
-    expect(root.textContent).not.toMatch(/投票|社区平均/u);
+    const voteStatus = () => root.querySelector<HTMLElement>(".vote-status")!;
+    expect(voteStatus().hidden).toBe(false);
+    expect(voteStatus().textContent).toContain("你的投票：未投票");
+    expect(root.querySelector(".community-ghost-thumb")!.getAttribute("hidden")).not.toBeNull();
+
+    controller.setAppMode("news");
+    expect(voteStatus().hidden).toBe(true);
+    controller.setAppMode("chat");
+    expect(voteStatus().hidden).toBe(true);
   });
 
   it("用直白文案说明自动模式和手动降级", () => {
@@ -106,7 +114,7 @@ describe("liang slider app", () => {
     expect(slider.value).toBe("6");
     expect(votes).toEqual([11]);
     expect(root.querySelector(".calibration-status")?.textContent).toBe(
-      "拖动滑片即可连续校准，当前位置会保存在本机",
+      "拖动滑片校准并参与社区投票，位置与投票都会记住",
     );
   });
 
@@ -123,7 +131,9 @@ describe("liang slider app", () => {
     controller.setCommunityScore(score);
 
     expect(controller.score).toBe(6);
-    expect(root.querySelector(".community-ghost-thumb, .vote-total")).toBeNull();
+    const ghost = root.querySelector<HTMLElement>(".community-ghost-thumb")!;
+    expect(ghost.hidden).toBe(false);
+    expect(ghost.style.getPropertyValue("--community-position")).toContain("58.");
   });
 
   it("较慢的投票响应不会打断第二次拖动预览", async () => {

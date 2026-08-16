@@ -15,6 +15,8 @@ const mocks = vi.hoisted(() => {
     setError: vi.fn(),
     setCommunityUnavailable: vi.fn(),
     setVoteError: vi.fn(),
+    setCooldown: vi.fn(),
+    setVotingState: vi.fn(),
     restoreVote: vi.fn(),
     setCommunityScore: vi.fn(),
     setUserVotePosition: vi.fn(),
@@ -129,7 +131,7 @@ describe("client bootstrap", () => {
   });
 
   it("saves manual calibration locally without sending an online ballot", async () => {
-    mocks.configured = true;
+    mocks.configured = false;
     await import("./main");
 
     mocks.controller.onVote?.(9);
@@ -140,6 +142,37 @@ describe("client bootstrap", () => {
     expect(mocks.controller.setUserVotePosition).toHaveBeenCalledWith(9);
     expect(mocks.controller.restoreVote).toHaveBeenCalledWith(9);
     expect(mocks.submitVote).not.toHaveBeenCalled();
+  });
+
+  it("配置 API 时提交在线投票并保存服务端冷却时间", async () => {
+    mocks.configured = true;
+    mocks.submitVote.mockResolvedValue({
+      accepted: true,
+      userPosition: 9,
+      nextVoteAt: 1_000,
+      score: 2.5,
+      stage: "梁圣",
+      voterCount: 4,
+      todayVoterCount: 1,
+      positiveCount: 3,
+      negativeCount: 1,
+      neutralCount: 0,
+      positivePoints: 13,
+      negativePoints: -3,
+    });
+    await import("./main");
+
+    mocks.controller.onVote?.(9);
+    await vi.waitFor(() => {
+      expect(mocks.submitVote).toHaveBeenCalled();
+    });
+    expect(mocks.submitVote).toHaveBeenCalledWith(expect.stringContaining("fallback-"), 9);
+    expect(mocks.controller.setCommunityScore).toHaveBeenCalledWith(expect.objectContaining({ score: 2.5 }));
+    expect(mocks.controller.setVotingState).toHaveBeenCalledWith(expect.objectContaining({ voterCount: 4 }));
+    expect(mocks.controller.setCooldown).toHaveBeenCalled();
+    expect(localStorage.getItem("liang-slider:manual-position:v1")).toBe(
+      JSON.stringify({ position: 9, nextVoteAt: 1_000 }),
+    );
   });
 
   it("restores the last local manual position immediately", async () => {
