@@ -32,7 +32,7 @@ describe("news collection jobs", () => {
       ALLOWED_ORIGINS: "https://app.example",
     };
 
-    const started = startNewsJob(env, false, now);
+    const started = startNewsJob(env, false, now, "deep");
     expect(started).toMatchObject({ status: "running", progress: 1, stage: "queued" });
     await vi.waitFor(() => {
       expect(getNewsJob(started.id, now + 10)).toMatchObject({

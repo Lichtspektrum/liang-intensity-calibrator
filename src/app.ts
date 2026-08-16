@@ -8,6 +8,7 @@ import type {
   NewsCalibrationData,
   NewsItemData,
   NewsJobData,
+  NewsVariant,
   ScoreData,
   TimelineEventData,
 } from "./api";
@@ -63,6 +64,9 @@ export interface AppController {
   onModeChange?: (mode: AppMode) => void;
   onModePositionChange?: (mode: AppMode, score: number) => void;
   onNewsRefresh?: () => void;
+  onNewsTimerChange?: (enabled: boolean) => void;
+  onNewsVariantChange?: (variant: NewsVariant) => void;
+  onNewsStart?: () => void;
   onChatSubmit?: (message: string) => void;
   onConversationSelect?: (id: string) => void;
   onConversationDelete?: (id: string) => void;
@@ -214,9 +218,20 @@ export function mountApp(
                 <span class="mode-kicker">NEWS MODE</span>
                 <h2>今天的 AI，梁到哪了？</h2>
               </div>
-              <button class="news-refresh-btn" type="button">重新读取</button>
+              <div class="news-panel-actions">
+                <button class="news-start-btn" type="button">开始</button>
+                <label class="news-timer-toggle" title="开启后每 30 分钟自动读取一次（90 分钟缓存有效期内复用结果）">
+                  <input class="news-timer-checkbox" type="checkbox" />
+                  <span>每 30 分钟自动刷新</span>
+                </label>
+                <button class="news-refresh-btn" type="button">重新读取</button>
+              </div>
             </div>
-            <p class="news-status">准备读取今天发布的 AI 新闻。</p>
+            <div class="news-variant-switch" role="group" aria-label="新闻模式版本">
+              <button class="news-variant-btn is-active" type="button" data-variant="quick">快速版</button>
+              <button class="news-variant-btn" type="button" data-variant="deep">深度版</button>
+            </div>
+            <p class="news-status">按「开始」运行新闻校准（默认快速版，仅规则信号）。</p>
             <section class="news-progress" aria-label="新闻采集进度" hidden>
               <div class="news-progress-heading">
                 <div>
@@ -331,6 +346,7 @@ export function mountApp(
   const newsQuote = root.querySelector<HTMLElement>(".news-quote")!;
   const newsCaveat = root.querySelector<HTMLElement>(".news-caveat")!;
   const newsMarkdown = root.querySelector<HTMLElement>(".news-markdown")!;
+  const newsFeed = root.querySelector<HTMLElement>(".news-feed")!;
   const newsFeedCount = root.querySelector<HTMLElement>(".news-feed-count")!;
   const newsProgress = root.querySelector<HTMLElement>(".news-progress")!;
   const newsProgressLabel = root.querySelector<HTMLElement>(".news-progress-label")!;
@@ -345,6 +361,7 @@ export function mountApp(
   const metricUnique = root.querySelector<HTMLElement>(".metric-unique")!;
   const metricElapsed = root.querySelector<HTMLElement>(".metric-elapsed")!;
   const newsRefreshButton = root.querySelector<HTMLButtonElement>(".news-refresh-btn")!;
+  const newsStartButton = root.querySelector<HTMLButtonElement>(".news-start-btn")!;
   const chatPanel = root.querySelector<HTMLElement>(".chat-panel")!;
   const chatForm = root.querySelector<HTMLFormElement>(".chat-form")!;
   const chatInput = root.querySelector<HTMLTextAreaElement>("#chat-input")!;
@@ -462,6 +479,29 @@ export function mountApp(
   newsRefreshButton.addEventListener("click", () => {
     const controller = (root as HTMLElement & { _controller?: AppController })._controller;
     controller?.onNewsRefresh?.();
+  });
+
+  newsStartButton.addEventListener("click", () => {
+    const controller = (root as HTMLElement & { _controller?: AppController })._controller;
+    controller?.onNewsStart?.();
+  });
+
+  const newsTimerCheckbox = root.querySelector<HTMLInputElement>(".news-timer-checkbox")!;
+  newsTimerCheckbox.addEventListener("change", () => {
+    const controller = (root as HTMLElement & { _controller?: AppController })._controller;
+    controller?.onNewsTimerChange?.(newsTimerCheckbox.checked);
+  });
+
+  const newsVariantButtons = Array.from(root.querySelectorAll<HTMLButtonElement>(".news-variant-btn"));
+  newsVariantButtons.forEach((button) => {
+    button.addEventListener("click", () => {
+      const variant = button.dataset.variant as NewsVariant;
+      newsVariantButtons.forEach((candidate) => {
+        candidate.classList.toggle("is-active", candidate === button);
+      });
+      const controller = (root as HTMLElement & { _controller?: AppController })._controller;
+      controller?.onNewsVariantChange?.(variant);
+    });
   });
 
   chatForm.addEventListener("submit", (event) => {
@@ -655,6 +695,7 @@ export function mountApp(
     },
     setNewsLoading() {
       newsRefreshButton.disabled = true;
+      newsStartButton.disabled = true;
       newsStatus.dataset.state = "loading";
       newsStatus.textContent = "正在建立可核验的今日 AI 新闻视图…";
       newsProgress.hidden = false;
@@ -695,27 +736,39 @@ export function mountApp(
     },
     setNewsResult(result) {
       newsRefreshButton.disabled = false;
+      newsStartButton.disabled = false;
       newsStatus.dataset.state = "ready";
-      newsStatus.textContent = `${result.date} · ${result.items.length} 条有效信号`;
+      const isQuick = result.variant === "quick";
+      newsStatus.textContent = isQuick
+        ? `${result.date} · 快速版规则信号`
+        : `${result.date} · ${result.items.length} 条有效信号`;
       newsResult.hidden = false;
+      newsResult.classList.toggle("is-quick", isQuick);
       newsProgress.dataset.state = "completed";
       newsHeadline.textContent = result.headline;
       newsRationale.textContent = result.rationale;
-      newsQuote.replaceChildren();
-      const quoteText = document.createTextNode(`“${result.quote.text}”`);
-      newsQuote.append(quoteText);
-      newsCaveat.replaceChildren(document.createTextNode(`${result.sourceCaveat} `));
-      const transcriptLink = document.createElement("a");
-      transcriptLink.href = result.transcriptSource;
-      transcriptLink.target = "_blank";
-      transcriptLink.rel = "noreferrer";
-      transcriptLink.textContent = "查看时间戳归档";
-      newsCaveat.append(transcriptLink);
-      newsFeedCount.textContent = `${result.items.length} 条`;
-      renderSafeNewsMarkdown(newsMarkdown, result.items);
+      // 快速版只展示规则信号摘要，隐藏语录、来源与新闻列表。
+      newsQuote.hidden = isQuick;
+      newsCaveat.hidden = isQuick;
+      newsFeed.hidden = isQuick;
+      if (!isQuick) {
+        newsQuote.replaceChildren();
+        const quoteText = document.createTextNode(`“${result.quote.text}”`);
+        newsQuote.append(quoteText);
+        newsCaveat.replaceChildren(document.createTextNode(`${result.sourceCaveat} `));
+        const transcriptLink = document.createElement("a");
+        transcriptLink.href = result.transcriptSource;
+        transcriptLink.target = "_blank";
+        transcriptLink.rel = "noreferrer";
+        transcriptLink.textContent = "查看时间戳归档";
+        newsCaveat.append(transcriptLink);
+        newsFeedCount.textContent = `${result.items.length} 条`;
+        renderSafeNewsMarkdown(newsMarkdown, result.items);
+      }
     },
     setNewsError(message) {
       newsRefreshButton.disabled = false;
+      newsStartButton.disabled = false;
       newsStatus.dataset.state = "error";
       newsStatus.textContent = message;
       newsProgress.dataset.state = "failed";

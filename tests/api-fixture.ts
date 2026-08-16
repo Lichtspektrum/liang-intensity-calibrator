@@ -51,6 +51,7 @@ function corsHeadersFor(origin: string) {
 const NEWS_JOB_ID = "00000000-0000-4000-8000-000000000014";
 const NEWS_RESULT = {
   date: "2026-08-14",
+  variant: "deep",
   score: 9,
   stage: "梁神",
   headline: "开放与效率成为今天的主信号",
@@ -67,11 +68,29 @@ const NEWS_RESULT = {
   collectedAt: Date.now(),
 };
 
-function newsJob(status: "running" | "completed") {
+const QUICK_NEWS_RESULT = {
+  date: "2026-08-14",
+  variant: "quick",
+  score: 3,
+  stage: "梁圣",
+  headline: "快速版：规则信号校准",
+  rationale: "定价与缓存信号 -1（token 成本连续 1 小时上涨扣 3 分；缓存命中率变动 +2 分）；DeepSeek 最强模型 DeepSeek V4 Pro 0813 (max) 排名第 8，较上一小时上升 2 位，信号 +10；快速版仅运行规则性来源，不抓取新闻。",
+  dimensions: { originality: 0, openness: 0, efficiency: 0, intelligence: 0, restraint: 0 },
+  quote: { id: "neutral", dimension: "neutral", text: "", timestamp: "" },
+  quoteSource: "",
+  transcriptSource: "",
+  sourceCaveat: "快速版仅依据规则信号。",
+  items: [],
+  collectedAt: Date.now(),
+};
+
+function newsJob(status: "running" | "completed", variant: "quick" | "deep") {
   const completed = status === "completed";
+  const result = variant === "quick" ? QUICK_NEWS_RESULT : NEWS_RESULT;
   return {
     id: NEWS_JOB_ID,
     status,
+    variant,
     progress: completed ? 100 : 42,
     stage: completed ? "complete" : "web-search",
     label: completed ? "今日校准完成" : "中英双路检索",
@@ -88,7 +107,7 @@ function newsJob(status: "running" | "completed") {
       detail: completed ? "已保存 1 条新闻与匹配句子" : "中文检索完成 · 1 条",
       at: Date.now(),
     }],
-    ...(completed ? { result: NEWS_RESULT } : {}),
+    ...(completed ? { result } : {}),
   };
 }
 
@@ -148,6 +167,7 @@ export async function installApiRoutes(
     modePositionRequests: [],
   };
   let storedModePositions = { news: null as number | null, chat: null as number | null };
+  let lastNewsVariant: "quick" | "deep" = "quick";
 
   await page.route(`${API_ORIGIN}/api/**`, async (route) => {
     const request = route.request();
@@ -209,10 +229,12 @@ export async function installApiRoutes(
         await failRoute(route, options.newsFailure, corsHeaders);
         return;
       }
+      const body = request.postDataJSON() as { variant?: "quick" | "deep" };
+      if (body.variant === "quick" || body.variant === "deep") lastNewsVariant = body.variant;
       await route.fulfill({
         headers: corsHeaders,
         contentType: "application/json",
-        body: JSON.stringify(newsJob("running")),
+        body: JSON.stringify(newsJob("running", lastNewsVariant)),
       });
       return;
     }
@@ -221,7 +243,7 @@ export async function installApiRoutes(
       await route.fulfill({
         headers: corsHeaders,
         contentType: "application/json",
-        body: JSON.stringify(newsJob("completed")),
+        body: JSON.stringify(newsJob("completed", lastNewsVariant)),
       });
       return;
     }

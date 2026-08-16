@@ -10,6 +10,8 @@ import {
 } from "./liang-profile";
 import type { AiNewsItem } from "./ai-news-collector";
 import { COMPETITOR_NAMES } from "./ai-news-search";
+import type { PricingSignalResult } from "./pricing-signal";
+import type { ModelRankingSignalResult } from "./model-ranking-signal";
 import { runStructuredAi } from "./ai-runtime";
 
 export interface AnalyzedNewsItem extends AiNewsItem {
@@ -23,6 +25,8 @@ export interface AnalyzedNewsItem extends AiNewsItem {
 
 export interface NewsCalibration {
   date: string;
+  /** 版本：quick 只含规则信号，deep 为全量管道 */
+  variant?: "quick" | "deep";
   score: number;
   stage: string;
   headline: string;
@@ -34,6 +38,10 @@ export interface NewsCalibration {
   sourceCaveat: string;
   items: AnalyzedNewsItem[];
   collectedAt: number;
+  /** 定价与缓存独立信号（opencode.ai/data 规则源），与新闻分相加后 clamp 到 ±15 */
+  pricing?: PricingSignalResult;
+  /** DeepSeek 最强模型排名独立信号（artificialanalysis.ai 规则源） */
+  ranking?: ModelRankingSignalResult;
 }
 
 const DIMENSION_KEYS: (keyof CalibrationDimensions)[] = [

@@ -513,6 +513,18 @@ h1 {
   cursor: pointer;
 }
 
+.news-start-btn {
+  border: 1px solid var(--accent);
+  color: var(--thumb-bg);
+  background: var(--accent);
+  cursor: pointer;
+}
+
+.news-start-btn:disabled {
+  cursor: wait;
+  opacity: 0.55;
+}
+
 .mode-btn {
   border: 0;
   border-radius: 999px;
@@ -594,6 +606,67 @@ h1 {
   gap: 18px;
 }
 
+.news-panel-actions {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+  gap: 10px;
+}
+
+.news-timer-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--muted);
+  font-size: 9px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.news-timer-checkbox {
+  width: 13px;
+  height: 13px;
+  margin: 0;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
+.news-timer-toggle:has(.news-timer-checkbox:checked) {
+  color: currentColor;
+}
+
+.news-variant-switch {
+  display: inline-flex;
+  gap: 2px;
+  margin-bottom: 8px;
+  padding: 2px;
+  border: 1px solid color-mix(in srgb, currentColor 20%, transparent);
+  border-radius: 999px;
+}
+
+.news-variant-btn {
+  border: 0;
+  border-radius: 999px;
+  padding: 3px 10px;
+  color: var(--muted);
+  background: transparent;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  cursor: pointer;
+  transition: color 180ms ease, background-color 180ms ease;
+}
+
+.news-variant-btn.is-active {
+  color: var(--thumb-bg);
+  background: var(--accent);
+}
+
+.news-variant-btn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
 .mode-panel h2,
 .mode-panel h3 {
   margin: 0;
@@ -619,6 +692,7 @@ h1 {
 }
 
 .news-refresh-btn,
+.news-start-btn,
 .chat-submit-btn {
   padding: 7px 11px;
   font-size: 10px;
@@ -626,6 +700,7 @@ h1 {
 }
 
 .news-refresh-btn:disabled,
+.news-start-btn:disabled,
 .chat-submit-btn:disabled {
   cursor: wait;
   opacity: 0.55;
@@ -844,6 +919,20 @@ h1 {
 }
 
 .news-result[hidden] {
+  display: none;
+}
+
+/* 快速版：隐藏新闻列表后，分析区占满整行 */
+.news-result.is-quick {
+  display: block;
+}
+
+.news-result.is-quick .news-feed {
+  display: none;
+}
+
+.news-result.is-quick .news-quote,
+.news-result.is-quick .news-caveat {
   display: none;
 }
 

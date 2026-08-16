@@ -565,4 +565,72 @@ describe("liang slider app", () => {
     expect(select.value).toBe("opencode-go/deepseek-v4-flash");
     expect(select.options).toHaveLength(1);
   });
+
+  it("新闻定时刷新开关默认关闭，勾选后回调开启，取消勾选回调关闭", () => {
+    const controller = mountApp(root);
+    const changed: boolean[] = [];
+    controller.onNewsTimerChange = (enabled) => changed.push(enabled);
+
+    const checkbox = root.querySelector<HTMLInputElement>(".news-timer-checkbox")!;
+    expect(checkbox).not.toBeNull();
+    expect(checkbox.checked).toBe(false);
+
+    checkbox.click();
+    expect(changed).toEqual([true]);
+
+    checkbox.click();
+    expect(changed).toEqual([true, false]);
+  });
+
+  it("新闻版本默认快速版，切换深度版触发回调并高亮", () => {
+    const controller = mountApp(root);
+    const changed: string[] = [];
+    controller.onNewsVariantChange = (variant) => changed.push(variant);
+
+    const quick = root.querySelector<HTMLButtonElement>('.news-variant-btn[data-variant="quick"]')!;
+    const deep = root.querySelector<HTMLButtonElement>('.news-variant-btn[data-variant="deep"]')!;
+    expect(deep).not.toBeNull();
+    expect(quick).not.toBeNull();
+    expect(quick.classList.contains("is-active")).toBe(true);
+
+    deep.click();
+    expect(changed).toEqual(["deep"]);
+    expect(deep.classList.contains("is-active")).toBe(true);
+    expect(quick.classList.contains("is-active")).toBe(false);
+
+    quick.click();
+    expect(changed).toEqual(["deep", "quick"]);
+  });
+
+  it("按「开始」键才触发新闻运行回调", () => {
+    const controller = mountApp(root);
+    const starts: boolean[] = [];
+    controller.onNewsStart = () => starts.push(true);
+
+    const startButton = root.querySelector<HTMLButtonElement>(".news-start-btn")!;
+    expect(startButton).not.toBeNull();
+    expect(starts).toHaveLength(0);
+
+    startButton.click();
+    expect(starts).toHaveLength(1);
+
+    controller.setNewsLoading();
+    expect(startButton.disabled).toBe(true);
+    controller.setNewsResult({
+      date: "2026-08-14",
+      variant: "quick",
+      score: 3,
+      stage: "梁圣",
+      headline: "快速版：规则信号校准",
+      rationale: "规则信号摘要",
+      dimensions: { originality: 0, openness: 0, efficiency: 0, intelligence: 0, restraint: 0 },
+      quote: { id: "neutral", dimension: "neutral", text: "", timestamp: "" },
+      quoteSource: "",
+      transcriptSource: "",
+      sourceCaveat: "快速版仅依据规则信号。",
+      items: [],
+      collectedAt: Date.now(),
+    });
+    expect(startButton.disabled).toBe(false);
+  });
 });

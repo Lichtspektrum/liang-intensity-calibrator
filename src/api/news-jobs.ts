@@ -4,6 +4,7 @@ import {
   NEWS_CACHE_TTL_MS,
   refreshNewsCalibration,
   type NewsPipelineProgress,
+  type NewsVariant,
 } from "./news";
 import { jsonResponse, todayInBeijing, type Env } from "./shared";
 
@@ -21,6 +22,7 @@ export interface NewsProgressEvent {
 export interface NewsJobSnapshot {
   id: string;
   status: NewsJobStatus;
+  variant: NewsVariant;
   progress: number;
   stage: string;
   label: string;
@@ -78,7 +80,8 @@ function updateJob(job: NewsJob, update: NewsPipelineProgress): void {
 
 async function runJob(job: NewsJob, env: Env): Promise<void> {
   try {
-    if (!job.force) {
+    // 快速版不读深度缓存，直接现场跑规则信号（便宜、按小时幂等）。
+    if (job.variant !== "quick") {
       const cached = await getCachedNewsCalibration(env, todayInBeijing(job.startedAt));
       if (cached && job.startedAt - cached.collectedAt < NEWS_CACHE_TTL_MS) {
         updateJob(job, {
@@ -93,7 +96,7 @@ async function runJob(job: NewsJob, env: Env): Promise<void> {
         return;
       }
     }
-    job.result = await refreshNewsCalibration(env, job.startedAt, (update) => updateJob(job, update));
+    job.result = await refreshNewsCalibration(env, job.startedAt, (update) => updateJob(job, update), job.variant);
     job.status = "completed";
   } catch {
     job.status = "failed";
@@ -109,7 +112,12 @@ async function runJob(job: NewsJob, env: Env): Promise<void> {
   }
 }
 
-export function startNewsJob(env: Env, force = false, now = Date.now()): NewsJobSnapshot {
+export function startNewsJob(
+  env: Env,
+  force = false,
+  now = Date.now(),
+  variant: NewsVariant = "quick",
+): NewsJobSnapshot {
   cleanup(now);
   if (activeJobId) {
     const active = jobs.get(activeJobId);
@@ -119,6 +127,7 @@ export function startNewsJob(env: Env, force = false, now = Date.now()): NewsJob
   const job: NewsJob = {
     id,
     force,
+    variant,
     status: "running",
     progress: 1,
     stage: "queued",
@@ -149,13 +158,15 @@ export function getNewsJob(id: string, now = Date.now()): NewsJobSnapshot | null
 
 export async function handlePostNewsJob(request: Request, env: Env): Promise<Response> {
   let force = false;
+  let variant: NewsVariant = "quick";
   try {
-    const body = await request.json() as { force?: unknown };
+    const body = await request.json() as { force?: unknown; variant?: unknown };
     force = body?.force === true;
+    if (body?.variant === "quick") variant = "quick";
   } catch {
     // An empty body starts a normal cache-aware collection.
   }
-  return jsonResponse(startNewsJob(env, force), {
+  return jsonResponse(startNewsJob(env, force, Date.now(), variant), {
     status: 202,
     headers: { "Cache-Control": "no-store" },
   });

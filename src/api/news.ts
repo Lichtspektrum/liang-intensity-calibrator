@@ -1,9 +1,50 @@
 import { analyzeTodaysNews, type NewsCalibration } from "../ai-news-analyzer";
 import { collectTodaysAiNews, deduplicateNews } from "../ai-news-collector";
 import { searchTodaysAiNews } from "../ai-news-search";
+import { describeScore } from "../score-domain";
+import { computePricingSignal, type PricingSignalResult } from "../pricing-signal";
+import { computeModelRankingSignal, type ModelRankingSignalResult } from "../model-ranking-signal";
 import { type Env, jsonResponse, todayInBeijing } from "./shared";
 
 export const NEWS_CACHE_TTL_MS = 90 * 60 * 1_000;
+export const SCORE_FLOOR = -15;
+export const SCORE_CEIL = 15;
+
+export type NewsVariant = "quick" | "deep";
+
+/** 新闻分与各独立信号分（定价、模型排名等）相加，并 clamp 到 [-15, 15]。 */
+export function combineNewsAndSignalScores(newsScore: number, ...signalScores: number[]): number {
+  const total = signalScores.reduce((sum, score) => sum + score, newsScore);
+  return Math.max(SCORE_FLOOR, Math.min(SCORE_CEIL, Math.round(total * 10) / 10));
+}
+
+/** 兼容旧签名：仅含定价信号的组合。 */
+export const combineNewsAndPricingScore = combineNewsAndSignalScores;
+
+/** 快速版的规则信号摘要文案。 */
+export function buildQuickRationale(
+  pricing: PricingSignalResult,
+  ranking: ModelRankingSignalResult,
+): string {
+  const parts: string[] = [];
+  if (!pricing.unavailable) {
+    parts.push(
+      `定价与缓存信号 ${pricing.score >= 0 ? "+" : ""}${pricing.score}`
+      + `（token 成本连续 ${pricing.streak} 小时上涨扣 ${pricing.tokenCostPenalty} 分；`
+      + `缓存命中率变动 ${pricing.cacheRatioDelta >= 0 ? "+" : ""}${pricing.cacheRatioDelta} 分）`,
+    );
+  }
+  if (!ranking.unavailable) {
+    parts.push(
+      `DeepSeek 最强模型 ${ranking.bestModelLabel} 排名第 ${ranking.rank}，`
+      + `较上一小时 ${ranking.rankDelta === 0 ? "持平" : `${ranking.rankDelta > 0 ? "上升" : "下降"} ${Math.abs(ranking.rankDelta)} 位`}，`
+      + `信号 ${ranking.score >= 0 ? "+" : ""}${ranking.score}`,
+    );
+  }
+  if (parts.length === 0) parts.push("两个规则源均暂不可用，分数保持中性。");
+  parts.push("快速版仅运行规则性来源，不抓取新闻。");
+  return parts.join("；");
+}
 
 export interface NewsPipelineProgress {
   progress: number;
@@ -55,11 +96,82 @@ export async function refreshNewsCalibration(
   env: Env,
   now = Date.now(),
   report: NewsProgressReporter = () => undefined,
+  variant: NewsVariant = "deep",
 ): Promise<NewsCalibration> {
   const date = todayInBeijing(now);
   const runner = env.AI_RUNNER;
+  // 独立规则信号模块：始终在新闻模块首位运行（独立计分，最后与新闻分相加）。
   report({
-    progress: 4,
+    progress: 2,
+    stage: "pricing",
+    label: "定价与缓存信号",
+    detail: "查询 opencode.ai/data 的 DeepSeek token 成本与缓存命中率",
+  });
+  const pricing = await computePricingSignal(env, now);
+  report({
+    progress: 3,
+    stage: "pricing",
+    label: "定价与缓存信号",
+    detail: pricing.unavailable
+      ? "该源暂不可用，此项按 0 分计入"
+      : `token 成本合计 ${pricing.combinedCost.toFixed(2)}，连续 ${pricing.streak} 小时上涨扣 ${pricing.tokenCostPenalty} 分；缓存命中率变动 ${pricing.cacheRatioDelta >= 0 ? "+" : ""}${pricing.cacheRatioDelta} 分；独立信号 ${pricing.score >= 0 ? "+" : ""}${pricing.score}`,
+    stats: { uniqueItems: 0 },
+  });
+  report({
+    progress: 5,
+    stage: "ranking",
+    label: "模型排名信号",
+    detail: "查询 artificialanalysis.ai 上 DeepSeek 最强模型的智能指数排名",
+  });
+  const ranking = await computeModelRankingSignal(env, now);
+  report({
+    progress: 6,
+    stage: "ranking",
+    label: "模型排名信号",
+    detail: ranking.unavailable
+      ? "该源暂不可用，此项按 0 分计入"
+      : `DeepSeek 最强模型 ${ranking.bestModelLabel} 当前第 ${ranking.rank} 名，较上一小时 ${ranking.rankDelta === 0 ? "持平" : `${ranking.rankDelta > 0 ? "上升" : "下降"} ${Math.abs(ranking.rankDelta)} 位`}，独立信号 ${ranking.score >= 0 ? "+" : ""}${ranking.score}`,
+    stats: { uniqueItems: 0 },
+  });
+
+  // 快速版：仅使用规则性源评分，不抓取新闻、不调用模型。
+  if (variant === "quick") {
+    const totalScore = combineNewsAndSignalScores(0, pricing.score, ranking.score);
+    report({
+      progress: 90,
+      stage: "score",
+      label: "规则信号计分",
+      detail: `定价独立分 ${pricing.score >= 0 ? "+" : ""}${pricing.score}，排名独立分 ${ranking.score >= 0 ? "+" : ""}${ranking.score}，合计 clamp 到 ±15 得 ${totalScore >= 0 ? "+" : ""}${totalScore}`,
+      stats: { uniqueItems: 0 },
+    });
+    const quickResult: NewsCalibration = {
+      date,
+      variant: "quick",
+      score: totalScore,
+      stage: describeScore(totalScore).stage,
+      headline: "快速版：规则信号校准",
+      rationale: buildQuickRationale(pricing, ranking),
+      dimensions: { originality: 0, openness: 0, efficiency: 0, intelligence: 0, restraint: 0 },
+      quote: { id: "neutral", dimension: "neutral", text: "", timestamp: "" },
+      quoteSource: "",
+      transcriptSource: "",
+      sourceCaveat: "快速版仅依据 opencode.ai/data 与 artificialanalysis.ai 的规则信号，未抓取新闻。",
+      items: [],
+      collectedAt: now,
+      pricing,
+      ranking,
+    };
+    report({
+      progress: 100,
+      stage: "complete",
+      label: "快速校准完成",
+      detail: `规则信号已合并，总分 ${totalScore >= 0 ? "+" : ""}${totalScore}`,
+      stats: { uniqueItems: 0 },
+    });
+    return quickResult;
+  }
+  report({
+    progress: 8,
     stage: "initialize",
     label: "确定今日窗口",
     detail: `按 Asia/Singapore 校验 ${date} 的发布日期`,
@@ -139,13 +251,24 @@ export async function refreshNewsCalibration(
       });
     },
   );
+  const totalScore = combineNewsAndSignalScores(calibration.score, pricing.score, ranking.score);
   report({
     progress: 94,
     stage: "score",
     label: "固定权重计分",
-    detail: `五维证据已聚合，确定性公式得到 ${calibration.score > 0 ? "+" : ""}${calibration.score}`,
+    detail: pricing.unavailable && ranking.unavailable
+      ? `五维证据已聚合，得 ${calibration.score > 0 ? "+" : ""}${calibration.score}；独立信号均不可用，保持该分`
+      : `新闻五维分 ${calibration.score > 0 ? "+" : ""}${calibration.score}，定价独立分 ${pricing.score > 0 ? "+" : ""}${pricing.score}，排名独立分 ${ranking.score > 0 ? "+" : ""}${ranking.score}，合计 clamp 到 ±15 得 ${totalScore > 0 ? "+" : ""}${totalScore}`,
     stats: { uniqueItems: items.length },
   });
+  const result: NewsCalibration = {
+    ...calibration,
+    variant: "deep",
+    score: totalScore,
+    stage: describeScore(totalScore).stage,
+    pricing,
+    ranking,
+  };
   await env.DB
     .prepare(
       `INSERT INTO news_calibrations (date, payload, collected_at)
@@ -154,7 +277,7 @@ ON CONFLICT(date) DO UPDATE SET
   payload = excluded.payload,
   collected_at = excluded.collected_at`,
     )
-    .bind(date, JSON.stringify(calibration), now)
+    .bind(date, JSON.stringify(result), now)
     .run();
   report({
     progress: 100,
@@ -163,7 +286,7 @@ ON CONFLICT(date) DO UPDATE SET
     detail: `已保存 ${items.length} 条新闻与匹配句子`,
     stats: { uniqueItems: items.length },
   });
-  return calibration;
+  return result;
 }
 
 export async function handleGetNews(env: Env, now = Date.now()): Promise<Response> {

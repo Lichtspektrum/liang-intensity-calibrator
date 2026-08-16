@@ -1,7 +1,7 @@
 import "./styles.css";
 
 import { type AppController, type AppMode, mountApp } from "./app";
-import { ChatRateLimitError, createApiClient, type ModePositionsData, type ScoreData, type TimelineDayData } from "./api";
+import { ChatRateLimitError, createApiClient, type ModePositionsData, type NewsVariant, type ScoreData, type TimelineDayData } from "./api";
 import { MAX_SCORE, MIN_SCORE } from "./score-domain";
 import { easeInOutCubic, scoreTransitionDurationMs } from "./score-transition";
 import {
@@ -63,6 +63,8 @@ let activeVote: StoredVote | null = null;
 let observedVoteStorageValue: string | null = null;
 let newsInFlight = false;
 let newsLoaded = false;
+let newsVariant: NewsVariant = "quick";
+let loadedNewsVariant: NewsVariant | null = null;
 let chatInFlight = false;
 let appMode: AppMode = "manual";
 let chatTransitionGeneration = 0;
@@ -151,8 +153,9 @@ async function loadNewsMode(force = false): Promise<void> {
   }
   newsInFlight = true;
   controller.setNewsLoading();
+  let succeeded = false;
   try {
-    let job = await api.startNewsCollection(force);
+    let job = await api.startNewsCollection(force, newsVariant);
     controller.setNewsProgress(job);
     while (job.status === "running") {
       await delay(NEWS_PROGRESS_POLL_MS);
@@ -166,22 +169,52 @@ async function loadNewsMode(force = false): Promise<void> {
     controller.setScore(result.score);
     controller.setNewsResult(result);
     newsLoaded = true;
+    loadedNewsVariant = result.variant ?? "deep";
     controller.setModePosition("news", result.score);
+    succeeded = true;
   } catch {
     controller.setNewsError("今天的 AI 新闻暂时读取失败，请稍后重试");
   } finally {
     newsInFlight = false;
+  }
+  // 加载期间用户切换了版本：成功返回后按新版本补跑一次。
+  if (succeeded && appMode === "news" && loadedNewsVariant !== newsVariant) {
+    void loadNewsMode();
   }
 }
 
 controller.onModeChange = (mode) => {
   appMode = mode;
   chatTransitionGeneration += 1;
-  if (mode === "news" && !newsLoaded) void loadNewsMode();
 };
 
 controller.onNewsRefresh = () => {
   void loadNewsMode(true);
+};
+
+// 不按键不开始：进入新闻模式不自动运行，只有按「开始」才启动管道。
+controller.onNewsStart = () => {
+  void loadNewsMode();
+};
+
+controller.onNewsVariantChange = (variant) => {
+  newsVariant = variant;
+};
+
+// 新闻模式可选定时器：开启后每 30 分钟自动读取一次（服务端 90 分钟缓存有效期内复用）。
+const NEWS_AUTO_REFRESH_MS = 30 * 60 * 1_000;
+let newsAutoRefreshTimer: ReturnType<typeof setInterval> | null = null;
+
+controller.onNewsTimerChange = (enabled) => {
+  if (enabled && !newsAutoRefreshTimer) {
+    newsAutoRefreshTimer = setInterval(() => {
+      // 首次运行必须由用户按「开始」，定时器只刷新已启动过的结果。
+      if (appMode === "news" && newsLoaded) void loadNewsMode();
+    }, NEWS_AUTO_REFRESH_MS);
+  } else if (!enabled && newsAutoRefreshTimer) {
+    clearInterval(newsAutoRefreshTimer);
+    newsAutoRefreshTimer = null;
+  }
 };
 
 controller.onChatSubmit = async (message: string) => {

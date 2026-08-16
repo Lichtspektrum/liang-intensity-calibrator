@@ -1,10 +1,18 @@
 import { expect, test } from "@playwright/test";
 import { APP_PATH, installApiRoutes } from "./api-fixture";
 
-test("新闻模式自动校准并在独立滚动栏显示来源", async ({ page }, testInfo) => {
+test("进入新闻模式不自动运行，按「开始」+深度版跑全量校准", async ({ page }, testInfo) => {
   const api = await installApiRoutes(page);
   await page.goto(APP_PATH);
   await page.getByRole("button", { name: "今日 AI 新闻" }).click();
+
+  // 不按键不开始：进入后不发起任何请求，等待用户按「开始」
+  await expect(page.locator(".news-start-btn")).toBeVisible();
+  await expect(page.locator(".news-status")).toContainText("按「开始」运行");
+  expect(api.newsRequests).toHaveLength(0);
+
+  await page.getByRole("button", { name: "深度版" }).click();
+  await page.getByRole("button", { name: "开始" }).click();
 
   await expect(page.locator(".news-headline")).toHaveText("开放与效率成为今天的主信号");
   await expect(page.locator(".level-output")).toHaveText("+09");
@@ -35,6 +43,36 @@ test("新闻模式自动校准并在独立滚动栏显示来源", async ({ page 
     expect(layout.pageScrollHeight).toBeLessThanOrEqual(layout.viewportHeight + 1);
     expect(layout.panelOverflowY).toBe("auto");
   }
+});
+
+test("快速版为默认且只跑规则信号，不跑中英双路检索", async ({ page }) => {
+  const api = await installApiRoutes(page);
+  await page.goto(APP_PATH);
+  await page.getByRole("button", { name: "今日 AI 新闻" }).click();
+
+  // 默认快速版：按「开始」直接出规则信号，隐藏语录与新闻列表
+  await expect(page.locator('.news-variant-btn[data-variant="quick"]')).toHaveClass(/is-active/);
+  await page.getByRole("button", { name: "开始" }).click();
+  await expect(page.locator(".news-headline")).toHaveText("快速版：规则信号校准");
+  await expect(page.locator(".news-rationale")).toContainText("快速版仅运行规则性来源");
+  await expect(page.locator(".news-feed")).toBeHidden();
+  await expect(page.locator(".news-quote")).toBeHidden();
+  await expect(page.locator(".news-caveat")).toBeHidden();
+  await expect(page.locator("#strength-slider")).toHaveValue("3");
+
+  // 切深度版再开始：恢复全量结果
+  await page.getByRole("button", { name: "深度版" }).click();
+  await page.getByRole("button", { name: "开始" }).click();
+  await expect(page.locator(".news-headline")).toHaveText("开放与效率成为今天的主信号");
+  await expect(page.locator(".news-feed")).toBeVisible();
+  await expect(page.locator("#strength-slider")).toHaveValue("9");
+
+  // 切回快速版再开始：规则信号
+  await page.getByRole("button", { name: "快速版" }).click();
+  await page.getByRole("button", { name: "开始" }).click();
+  await expect(page.locator(".news-headline")).toHaveText("快速版：规则信号校准");
+  await expect(page.locator("#strength-slider")).toHaveValue("3");
+  expect(api.newsRequests).toHaveLength(3);
 });
 
 test("梁式对话连续保留上下文，输出区独立滚动", async ({ page }, testInfo) => {
@@ -94,6 +132,8 @@ test("从自动模式回到手动模式时恢复本机位置", async ({ page }) 
   await installApiRoutes(page);
   await page.goto(APP_PATH);
   await page.getByRole("button", { name: "今日 AI 新闻" }).click();
+  await page.getByRole("button", { name: "深度版" }).click();
+  await page.getByRole("button", { name: "开始" }).click();
   await expect(page.locator("#strength-slider")).toHaveValue("9");
   await page.getByRole("button", { name: "手动" }).click();
   await expect(page.locator("#strength-slider")).toHaveValue("2.5");
@@ -104,6 +144,8 @@ test("新闻模式位置在切回时保持，不丢失给手动模式", async ({
   await installApiRoutes(page);
   await page.goto(APP_PATH);
   await page.getByRole("button", { name: "今日 AI 新闻" }).click();
+  await page.getByRole("button", { name: "深度版" }).click();
+  await page.getByRole("button", { name: "开始" }).click();
   await expect(page.locator("#strength-slider")).toHaveValue("9");
   await page.getByRole("button", { name: "手动" }).click();
   await expect(page.locator("#strength-slider")).toHaveValue("2.5");

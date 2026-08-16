@@ -53,6 +53,12 @@ export const COMPETITOR_NAMES = [
 export const COMPETITOR_COVERAGE_INSTRUCTION =
   `必须专门搜索 DeepSeek 主要竞争对手的当日动态：${COMPETITOR_NAMES.join("、")} 等，覆盖模型发布、技术突破、开源动作、产品上线与公司重大变化。`;
 
+/**
+ * 强提示：搜索必须以 梁文锋 / 深度求索(DeepSeek) / 幻方量化(High-Flyer) 动态为第一优先级。
+ */
+export const DEEPSEEK_PRIORITY_INSTRUCTION =
+  "第一优先级：必须优先搜索梁文锋、深度求索（DeepSeek）、幻方量化（High-Flyer）的当日动态（模型发布、技术突破、开源、论文、访谈发言、经营与算力动向）；只要窗口内有相关重大动态，必须收录为当日头条，排在竞争对手与行业新闻之前。";
+
 function stableId(value: string): string {
   let hash = 2166136261;
   for (const character of value) {
@@ -130,12 +136,13 @@ async function searchLanguage(
       TRUSTED_SOURCES_INSTRUCTION,
       "不要编造事实、URL、时间或来源。",
       COMPETITOR_COVERAGE_INSTRUCTION,
+      DEEPSEEK_PRIORITY_INSTRUCTION,
     ].join("\n"),
     [
       `目标日期：${date}（Asia/Singapore），收稿窗口为包含目标日期在内的最近 3 天`,
       isChinese
-        ? "搜索中文与中国科技来源中的全球 AI/大模型新闻，覆盖模型发布、研究突破、开源生态、推理效率、算力与重要公司动态；优先纳入上一条列出的 DeepSeek 竞争对手（千问/智谱/Kimi/豆包/MiniMax/文心/混元/阶跃/百川/零一万物/OpenAI/Anthropic/Google/Meta/xAI/Mistral/Microsoft）的新闻。输出中文摘要。"
-        : "搜索英文与国际来源的全球 AI/大模型新闻，覆盖模型发布、研究突破、开源生态、推理效率、算力与重要公司动态；优先纳入 DeepSeek 主要竞争对手（Qwen/GLM/Kimi/Doubao/MiniMax/Ernie/Hunyuan/Step/Baichuan/Yi/OpenAI/Anthropic/Google/Meta/xAI/Mistral/Microsoft）的新闻。输出中文摘要。",
+        ? "搜索中文与中国科技来源中的全球 AI/大模型新闻，覆盖模型发布、研究突破、开源生态、推理效率、算力与重要公司动态。第一优先级：梁文锋、深度求索（DeepSeek）、幻方量化（High-Flyer）的当日动态，只要窗口内有重大动态就必须收录为当日头条；第二优先级：上一条列出的 DeepSeek 竞争对手（千问/智谱/Kimi/豆包/MiniMax/文心/混元/阶跃/百川/零一万物/OpenAI/Anthropic/Google/Meta/xAI/Mistral/Microsoft）的新闻；再其次才是其余行业与生态新闻。输出中文摘要。"
+        : "搜索英文与国际来源的全球 AI/大模型新闻，覆盖模型发布、研究突破、开源生态、推理效率、算力与重要公司动态。第一优先级：Liang Wenfeng、DeepSeek（深度求索）、High-Flyer（幻方量化）的当日动态，窗口内有重大动态必须收录为当日头条；第二优先级：DeepSeek 主要竞争对手（Qwen/GLM/Kimi/Doubao/MiniMax/Ernie/Hunyuan/Step/Baichuan/Yi/OpenAI/Anthropic/Google/Meta/xAI/Mistral/Microsoft）的新闻；再其次才是其余行业与生态新闻。输出中文摘要。",
       "只返回目标日期及之前 2 天内（共 3 天窗口）发布的新闻。若窗口内没有合格新闻，返回空 items。",
     ].join("\n"),
     SEARCH_SCHEMA,

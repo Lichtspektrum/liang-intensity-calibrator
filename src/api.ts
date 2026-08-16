@@ -40,8 +40,11 @@ export interface NewsItemData {
   tags: string[];
 }
 
+export type NewsVariant = "quick" | "deep";
+
 export interface NewsCalibrationData {
   date: string;
+  variant?: NewsVariant;
   score: number;
   stage: string;
   headline: string;
@@ -69,6 +72,7 @@ export interface NewsProgressEventData {
 export interface NewsJobData {
   id: string;
   status: NewsJobStatus;
+  variant?: NewsVariant;
   progress: number;
   stage: string;
   label: string;
@@ -177,7 +181,7 @@ export interface ApiClient {
   submitVote(fingerprint: string, position: number): Promise<VoteResult>;
   fetchTimeline(from?: string, to?: string): Promise<TimelineDayData[]>;
   fetchNews(): Promise<NewsCalibrationData>;
-  startNewsCollection(force?: boolean): Promise<NewsJobData>;
+  startNewsCollection(force?: boolean, variant?: NewsVariant): Promise<NewsJobData>;
   fetchNewsProgress(jobId: string): Promise<NewsJobData>;
   chat(
     message: string,
@@ -590,11 +594,11 @@ export function createApiClient(baseUrl: string | undefined): ApiClient {
       if (!isNewsCalibration(result)) throw new Error("Invalid news response");
       return result;
     },
-    async startNewsCollection(force = false) {
+    async startNewsCollection(force = false, variant: NewsVariant = "deep") {
       const result = await fetchJson<unknown>("/api/news/jobs", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ force }),
+        body: JSON.stringify({ force, variant }),
       });
       if (!isNewsJob(result)) throw new Error("Invalid news job response");
       return result;
